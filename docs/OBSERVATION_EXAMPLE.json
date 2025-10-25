@@ -1,0 +1,357 @@
+{
+  "turn": 12,
+  "seed": 42,
+  "grid": {
+    "width": 12,
+    "height": 10
+  },
+  "strategic_dashboard": {
+    "total_ships_stationed": 28,
+    "total_ships_in_transit": 15,
+    "total_ships": 43,
+    "total_production_per_turn": 11,
+    "controlled_stars_count": 4,
+    "stars_by_ru": {
+      "1": 1,
+      "2": 1,
+      "3": 1,
+      "4": 1
+    },
+    "fleet_count": 3,
+    "avg_fleet_size": 5.0
+  },
+  "stars": [
+    {
+      "id": "H",
+      "x": 11,
+      "y": 6,
+      "letter": "H",
+      "name": "Hadar",
+      "owner": "p2",
+      "known_ru": 4,
+      "last_seen_control": "controlled",
+      "is_home": true,
+      "stationed_ships": 12
+    },
+    {
+      "id": "F",
+      "x": 8,
+      "y": 4,
+      "letter": "F",
+      "name": "Fomalhaut",
+      "owner": "p2",
+      "known_ru": 3,
+      "last_seen_control": "controlled",
+      "is_home": false,
+      "stationed_ships": 8
+    },
+    {
+      "id": "E",
+      "x": 9,
+      "y": 5,
+      "letter": "E",
+      "name": "Epsilon Eridani",
+      "owner": "p2",
+      "known_ru": 2,
+      "last_seen_control": "controlled",
+      "is_home": false,
+      "stationed_ships": 5
+    },
+    {
+      "id": "L",
+      "x": 8,
+      "y": 7,
+      "letter": "L",
+      "name": "Lesath",
+      "owner": "p2",
+      "known_ru": 2,
+      "last_seen_control": "controlled",
+      "is_home": false,
+      "stationed_ships": 3
+    },
+    {
+      "id": "K",
+      "x": 9,
+      "y": 6,
+      "letter": "K",
+      "name": "Kappa Phoenicis",
+      "owner": "p1",
+      "known_ru": 3,
+      "last_seen_control": "enemy",
+      "is_home": false,
+      "stationed_ships": null
+    },
+    {
+      "id": "D",
+      "x": 9,
+      "y": 2,
+      "letter": "D",
+      "name": "Deneb",
+      "owner": "p1",
+      "known_ru": 2,
+      "last_seen_control": "enemy",
+      "is_home": false,
+      "stationed_ships": null
+    },
+    {
+      "id": "C",
+      "x": 3,
+      "y": 2,
+      "letter": "C",
+      "name": "Capella",
+      "owner": "p1",
+      "known_ru": 4,
+      "last_seen_control": "enemy",
+      "is_home": true,
+      "stationed_ships": null
+    },
+    {
+      "id": "N",
+      "x": 2,
+      "y": 2,
+      "letter": "N",
+      "name": "Naos",
+      "owner": null,
+      "known_ru": 1,
+      "last_seen_control": "neutral",
+      "is_home": false,
+      "stationed_ships": null
+    },
+    {
+      "id": "O",
+      "x": 3,
+      "y": 0,
+      "letter": "O",
+      "name": "Ophiuchi",
+      "owner": null,
+      "known_ru": 2,
+      "last_seen_control": "neutral",
+      "is_home": false,
+      "stationed_ships": null
+    },
+    {
+      "id": "J",
+      "x": 0,
+      "y": 9,
+      "letter": "J",
+      "name": "Jabbah",
+      "owner": null,
+      "known_ru": null,
+      "last_seen_control": "unknown",
+      "is_home": false,
+      "stationed_ships": null
+    },
+    {
+      "id": "I",
+      "x": 11,
+      "y": 4,
+      "letter": "I",
+      "name": "Izar",
+      "owner": null,
+      "known_ru": null,
+      "last_seen_control": "unknown",
+      "is_home": false,
+      "stationed_ships": null
+    },
+    {
+      "id": "G",
+      "x": 9,
+      "y": 3,
+      "letter": "G",
+      "name": "Gamma Crucis",
+      "owner": null,
+      "known_ru": null,
+      "last_seen_control": "unknown",
+      "is_home": false,
+      "stationed_ships": null
+    },
+    {
+      "id": "P",
+      "x": 10,
+      "y": 9,
+      "letter": "P",
+      "name": "Polaris",
+      "owner": null,
+      "known_ru": null,
+      "last_seen_control": "unknown",
+      "is_home": false,
+      "stationed_ships": null
+    },
+    {
+      "id": "B",
+      "x": 4,
+      "y": 7,
+      "letter": "B",
+      "name": "Bellatrix",
+      "owner": null,
+      "known_ru": null,
+      "last_seen_control": "unknown",
+      "is_home": false,
+      "stationed_ships": null
+    },
+    {
+      "id": "A",
+      "x": 7,
+      "y": 9,
+      "letter": "A",
+      "name": "Altair",
+      "owner": null,
+      "known_ru": null,
+      "last_seen_control": "unknown",
+      "is_home": false,
+      "stationed_ships": null
+    },
+    {
+      "id": "M",
+      "x": 8,
+      "y": 8,
+      "letter": "M",
+      "name": "Mintaka",
+      "owner": null,
+      "known_ru": null,
+      "last_seen_control": "unknown",
+      "is_home": false,
+      "stationed_ships": null
+    }
+  ],
+  "my_fleets": [
+    {
+      "id": "p2-007",
+      "ships": 8,
+      "origin": "F",
+      "dest": "K",
+      "dist_remaining": 2
+    },
+    {
+      "id": "p2-008",
+      "ships": 5,
+      "origin": "H",
+      "dest": "D",
+      "dist_remaining": 3
+    },
+    {
+      "id": "p2-009",
+      "ships": 2,
+      "origin": "E",
+      "dest": "O",
+      "dist_remaining": 5
+    }
+  ],
+  "arrivals_this_turn": [
+    {
+      "fleet_id": "p2-006",
+      "dest": "L"
+    }
+  ],
+  "combats_last_turn": [
+    {
+      "star": "L",
+      "attacker": "me",
+      "defender": "opp",
+      "attacker_ships_before": 8,
+      "defender_ships_before": 3,
+      "attacker_losses": 2,
+      "defender_losses": 3,
+      "control_before": null,
+      "control_after": "me"
+    }
+  ],
+  "combats_last_5_turns": [
+    [
+      {
+        "star": "E",
+        "attacker": "me",
+        "defender": "opp",
+        "attacker_ships_before": 5,
+        "defender_ships_before": 2,
+        "attacker_losses": 1,
+        "defender_losses": 2,
+        "control_before": null,
+        "control_after": "me"
+      }
+    ],
+    [],
+    [
+      {
+        "star": "F",
+        "attacker": "me",
+        "defender": "opp",
+        "attacker_ships_before": 8,
+        "defender_ships_before": 3,
+        "attacker_losses": 2,
+        "defender_losses": 3,
+        "control_before": null,
+        "control_after": "me"
+      }
+    ],
+    [
+      {
+        "star": "K",
+        "attacker": "opp",
+        "defender": "me",
+        "attacker_ships_before": 10,
+        "defender_ships_before": 6,
+        "attacker_losses": 3,
+        "defender_losses": 6,
+        "control_before": "me",
+        "control_after": "opp"
+      }
+    ],
+    [
+      {
+        "star": "L",
+        "attacker": "me",
+        "defender": "opp",
+        "attacker_ships_before": 8,
+        "defender_ships_before": 3,
+        "attacker_losses": 2,
+        "defender_losses": 3,
+        "control_before": null,
+        "control_after": "me"
+      }
+    ]
+  ],
+  "rebellions_last_turn": [
+    {
+      "star": "L",
+      "star_name": "Lesath",
+      "ru": 2,
+      "garrison_before": 1,
+      "rebel_ships": 2,
+      "outcome": "loss",
+      "garrison_after": 0,
+      "rebel_survivors": 1
+    }
+  ],
+  "hyperspace_losses_last_turn": [
+    {
+      "fleet_id": "p2-005",
+      "origin": "H",
+      "dest": "K",
+      "ships_lost": 5
+    }
+  ],
+  "production_report": [
+    {
+      "star": "H",
+      "ships_produced": 4
+    },
+    {
+      "star": "F",
+      "ships_produced": 3
+    },
+    {
+      "star": "E",
+      "ships_produced": 2
+    },
+    {
+      "star": "L",
+      "ships_produced": 2
+    }
+  ],
+  "rules": {
+    "hyperspace_loss": 0.02,
+    "rebellion_chance": 0.5,
+    "production_formula": "ships_per_turn = star_ru"
+  }
+}
