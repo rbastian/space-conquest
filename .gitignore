@@ -24,10 +24,14 @@ MANIFEST
 
 # Virtual Environment
 venv/
+.venv/
 env/
 ENV/
 env.bak/
 venv.bak/
+
+# uv
+uv.lock
 
 # Testing
 .pytest_cache/
