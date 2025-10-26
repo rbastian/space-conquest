@@ -5,23 +5,18 @@ A turn-based 4X strategy game where players compete to capture each other's home
 ## Prerequisites
 
 - Python 3.10 or higher
-- pip (Python package installer)
+- [uv](https://docs.astral.sh/uv/) package manager
 
 ## Setup
 
-1. Create a virtual environment:
+1. Install uv (if not already installed):
    ```bash
-   python3 -m venv .venv
+   curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
-2. Activate the virtual environment:
+2. Install dependencies and create virtual environment:
    ```bash
-   source .venv/bin/activate
-   ```
-
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
+   uv sync
    ```
 
 ## Running the Game
@@ -30,12 +25,12 @@ A turn-based 4X strategy game where players compete to capture each other's home
 
 Start a human vs human game in text mode:
 ```bash
-python game.py
+uv run game.py
 ```
 
 Start a game with the terminal user interface (TUI):
 ```bash
-python game.py --tui
+uv run game.py --tui
 ```
 
 ### Game Modes
@@ -46,7 +41,7 @@ python game.py --tui
 
 Example with human vs AI:
 ```bash
-python game.py --tui --mode hvl
+uv run game.py --tui --mode hvl
 ```
 
 ### LLM Models
@@ -60,7 +55,7 @@ When playing against AI (`hvl` or `lvl` modes), you can choose the model:
 
 Example:
 ```bash
-python game.py --mode hvl --model sonnet
+uv run game.py --mode hvl --model sonnet
 ```
 
 ### Additional Options
@@ -74,22 +69,22 @@ python game.py --mode hvl --model sonnet
 
 ```bash
 # Human vs human with TUI
-python game.py --tui
+uv run game.py --tui
 
 # Human vs AI with TUI
-python game.py --tui --mode hvl
+uv run game.py --tui --mode hvl
 
 # Human vs AI with specific seed
-python game.py --mode hvl --seed 12345
+uv run game.py --mode hvl --seed 12345
 
 # AI vs AI with debug output
-python game.py --mode lvl --debug
+uv run game.py --mode lvl --debug
 
 # Load a saved game
-python game.py --load savegame.json
+uv run game.py --load savegame.json
 
 # Play and auto-save after
-python game.py --save mygame.json
+uv run game.py --save mygame.json
 ```
 
 ## Game Objective
@@ -105,5 +100,5 @@ Capture your opponent's home star to win!
 ## Running Tests
 
 ```bash
-python -m pytest -v
+uv run pytest
 ```
