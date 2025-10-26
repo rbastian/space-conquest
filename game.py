@@ -21,18 +21,20 @@ from src.utils.serialization import load_game, save_game
 class GameOrchestrator:
     """Manages turn loop and player coordination."""
 
-    def __init__(self, game: Game, p1_controller, p2_controller):
+    def __init__(self, game: Game, p1_controller, p2_controller, use_tui: bool = False):
         """Initialize game orchestrator.
 
         Args:
             game: Initial game state
             p1_controller: Controller for player 1 (HumanPlayer or LLMPlayer)
             p2_controller: Controller for player 2 (HumanPlayer or LLMPlayer)
+            use_tui: If True, skip welcome message (TUI shows its own)
         """
         self.game = game
         self.players = {"p1": p1_controller, "p2": p2_controller}
         self.turn_executor = TurnExecutor()
         self.display = DisplayManager()
+        self.use_tui = use_tui
         self.last_combat_events = []
         self.last_hyperspace_losses = []
         self.last_rebellion_events = []
@@ -49,12 +51,13 @@ class GameOrchestrator:
         Returns:
             Final game state with winner set
         """
-        print("\n" + "=" * 60)
-        print("Space Conquest")
-        print("=" * 60)
-        print("\nGoal: Capture your opponent's home star to win!")
-        print("Press Ctrl+C at any time to quit.\n")
-        input("Press Enter to start the game...")
+        if not self.use_tui:
+            print("\n" + "=" * 60)
+            print("Space Conquest")
+            print("=" * 60)
+            print("\nGoal: Capture your opponent's home star to win!")
+            print("Press Ctrl+C at any time to quit.\n")
+            input("Press Enter to start the game...")
 
         try:
             while not self.game.winner:
@@ -119,7 +122,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s                        # Start new game, human vs human
+  %(prog)s                        # Start new game, human vs human (text mode)
+  %(prog)s --tui                  # Start with terminal user interface (TUI)
+  %(prog)s --tui --mode hvl       # TUI mode, human vs LLM
   %(prog)s --mode hvh --seed 42   # Specific seed
   %(prog)s --load savegame.json   # Load saved game
   %(prog)s --save mygame.json     # Auto-save after game
@@ -158,6 +163,11 @@ Examples:
         action="store_true",
         help="Enable debug logging (shows verbose LLM tool calls and iterations)",
     )
+    parser.add_argument(
+        "--tui",
+        action="store_true",
+        help="Use terminal user interface (TUI) for human players instead of basic text mode",
+    )
 
     args = parser.parse_args()
 
@@ -188,13 +198,28 @@ Examples:
         game = generate_map(args.seed)
         print("Map generated successfully!")
 
+    # Check if TUI mode is requested with unsupported game mode
+    if args.tui and args.mode == "lvl":
+        print("Error: --tui flag does not work with --mode lvl (LLM vs LLM)")
+        print("TUI mode requires at least one human player")
+        sys.exit(1)
+
     # Create player controllers
     if args.mode == "hvh":
-        p1 = HumanPlayer("p1")
-        p2 = HumanPlayer("p2")
+        if args.tui:
+            from src.interface.tui_player import TUIPlayer
+            p1 = TUIPlayer("p1")
+            p2 = TUIPlayer("p2")
+        else:
+            p1 = HumanPlayer("p1")
+            p2 = HumanPlayer("p2")
     elif args.mode == "hvl":
         print(f"Initializing Human vs LLM game (using {args.model})...")
-        p1 = HumanPlayer("p1")
+        if args.tui:
+            from src.interface.tui_player import TUIPlayer
+            p1 = TUIPlayer("p1")
+        else:
+            p1 = HumanPlayer("p1")
         try:
             # Try to use real Bedrock client, fall back to mock if unavailable
             p2 = LLMPlayer("p2", use_mock=False, model=args.model, verbose=args.debug)
@@ -216,7 +241,7 @@ Examples:
             p2 = LLMPlayer("p2", use_mock=True, verbose=args.debug)
 
     # Run game
-    orchestrator = GameOrchestrator(game, p1, p2)
+    orchestrator = GameOrchestrator(game, p1, p2, use_tui=args.tui)
     final_game = orchestrator.run()
 
     # Save if requested

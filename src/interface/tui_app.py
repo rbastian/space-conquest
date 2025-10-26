@@ -40,44 +40,55 @@ class MapPanel(Static):
         self.update(map_str)
 
 
-class TablesPanel(Static):
-    """Widget to display controlled stars and fleets in transit."""
+class StarsTable(Static):
+    """Widget to display controlled stars."""
 
     def __init__(self, *args, **kwargs):
-        """Initialize tables panel."""
+        """Initialize stars table."""
         super().__init__(*args, **kwargs)
         self.display_manager = DisplayManager()
-        self.border_title = "Game State"
 
-    def update_tables(self, game: Game, player_id: str) -> None:
-        """Update the tables display.
-
-        Args:
-            game: Current game state
-            player_id: Player whose data to display
-        """
+    def update_table(self, game: Game, player_id: str) -> None:
+        """Update the controlled stars display."""
         player = game.players[player_id]
 
-        # Capture output from DisplayManager methods
         import io
         import sys
-
-        # Redirect stdout to capture print output
         old_stdout = sys.stdout
         sys.stdout = buffer = io.StringIO()
 
         try:
-            # Call display methods to generate output
             self.display_manager._show_controlled_stars(player, game)
-            self.display_manager._show_fleets_in_transit(player, game)
-
-            # Get the captured output
             output = buffer.getvalue()
         finally:
-            # Restore stdout
             sys.stdout = old_stdout
 
-        # Update the widget with captured output
+        self.update(output)
+
+
+class FleetsTable(Static):
+    """Widget to display fleets in transit."""
+
+    def __init__(self, *args, **kwargs):
+        """Initialize fleets table."""
+        super().__init__(*args, **kwargs)
+        self.display_manager = DisplayManager()
+
+    def update_table(self, game: Game, player_id: str) -> None:
+        """Update the fleets in transit display."""
+        player = game.players[player_id]
+
+        import io
+        import sys
+        old_stdout = sys.stdout
+        sys.stdout = buffer = io.StringIO()
+
+        try:
+            self.display_manager._show_fleets_in_transit(player, game)
+            output = buffer.getvalue()
+        finally:
+            sys.stdout = old_stdout
+
         self.update(output)
 
 
@@ -93,7 +104,6 @@ class TerminalPanel(RichLog):
             wrap=True,
             **kwargs
         )
-        self.border_title = "Terminal"
 
     def show_command(self, command: str) -> None:
         """Echo the command that was entered.
@@ -159,37 +169,86 @@ class SpaceConquestTUI(App):
 
     CSS = """
     #map_container {
-        height: 8;
+        height: 13;
         border: solid green;
     }
 
-    #tables_container {
-        height: 8;
+    #tables_row {
+        height: 15;
+    }
+
+    #stars_container {
+        width: 1fr;
         border: solid blue;
         overflow-y: auto;
     }
 
-    #terminal_container {
-        height: 1fr;
-        min-height: 5;
-        border: solid cyan;
+    #fleets_container {
+        width: 1fr;
+        border: solid blue;
         overflow-y: auto;
     }
 
-    #command_input {
+    StarsTable {
+        width: 100%;
+        height: auto;
+    }
+
+    FleetsTable {
+        width: 100%;
+        height: auto;
+    }
+
+    #terminal_container {
+        height: 10;
+        border: solid cyan;
+    }
+
+    TerminalPanel {
+        height: 1fr;
+        overflow-y: auto;
+        border: none;
+    }
+
+    #input_row {
         dock: bottom;
-        height: 3;
-        border: solid yellow;
-        padding: 0 1;
+        height: 1;
+        background: $surface;
+    }
+
+    #prompt_label {
+        width: auto;
+        background: $surface;
+        color: cyan;
+        padding: 0;
+    }
+
+    #command_input {
+        width: 1fr;
+        height: 1;
+        background: $surface;
+        border: none;
+        padding: 0;
     }
 
     Input {
-        background: $panel;
-        color: $text;
+        background: $surface;
+        color: white;
     }
 
     Input:focus {
-        border: tall yellow;
+        background: $surface;
+        color: white;
+    }
+
+    Input > .input--cursor {
+        background: cyan;
+        color: black;
+        text-style: bold;
+    }
+
+    Input > .input--placeholder {
+        color: $text-muted;
     }
     """
 
@@ -209,7 +268,8 @@ class SpaceConquestTUI(App):
         self.game = game
         self.player_id = player_id
         self.map_panel = None
-        self.tables_panel = None
+        self.stars_table = None
+        self.fleets_table = None
         self.terminal_panel = None
         self.display_manager = DisplayManager()
         self.parser = CommandParser()
@@ -223,13 +283,34 @@ class SpaceConquestTUI(App):
         self.map_panel = MapPanel(id="map_container")
         yield self.map_panel
 
-        self.tables_panel = TablesPanel(id="tables_container")
-        yield self.tables_panel
+        # Two side-by-side containers
+        with Horizontal(id="tables_row"):
+            # Left: Controlled Stars
+            stars_container = Container(id="stars_container")
+            stars_container.border_title = "Controlled Stars"
+            with stars_container:
+                self.stars_table = StarsTable()
+                yield self.stars_table
 
-        self.terminal_panel = TerminalPanel(id="terminal_container")
-        yield self.terminal_panel
+            # Right: Fleets in Hyperspace
+            fleets_container = Container(id="fleets_container")
+            fleets_container.border_title = "Fleets in Hyperspace"
+            with fleets_container:
+                self.fleets_table = FleetsTable()
+                yield self.fleets_table
 
-        yield Input(placeholder="Type command...", id="command_input")
+        # Terminal with integrated input
+        terminal_container = Container(id="terminal_container")
+        terminal_container.border_title = "Terminal"
+        with terminal_container:
+            self.terminal_panel = TerminalPanel()
+            yield self.terminal_panel
+            with Horizontal(id="input_row"):
+                yield Static(f"{self.player_id}> ", id="prompt_label")
+                yield Input(
+                    placeholder="",
+                    id="command_input"
+                )
 
         yield Footer()
 
@@ -237,20 +318,54 @@ class SpaceConquestTUI(App):
         """Handle mount event."""
         # Update displays on mount
         self.refresh_display()
-        # Show initial welcome message
+
+        # Show initial welcome and turn info
         if self.terminal_panel:
-            self.terminal_panel.show_info("Welcome to Space Conquest!")
-            self.terminal_panel.show_info("Type 'help' for available commands")
+            player = self.game.players[self.player_id]
+            self.terminal_panel.show_info(f"[bold cyan]Turn {self.game.turn} - {player.id.upper()}[/bold cyan]")
             self.terminal_panel.write("")
+
+            # Show combat events from last turn if any (filtered by fog of war)
+            if hasattr(self.game, "combats_last_turn") and self.game.combats_last_turn:
+                for event_dict in self.game.combats_last_turn:
+                    # Only show events at stars the player has visited
+                    star_id = event_dict.get("star_id")
+                    if star_id and star_id in player.visited_stars:
+                        # Convert dict to object for display (simple namespace works)
+                        from types import SimpleNamespace
+                        event = SimpleNamespace(**event_dict)
+                        self.terminal_panel.add_combat_report(event, self.game, self.player_id)
+
+            # Show hyperspace losses from last turn if any
+            if hasattr(self.game, "hyperspace_losses_last_turn") and self.game.hyperspace_losses_last_turn:
+                for loss_dict in self.game.hyperspace_losses_last_turn:
+                    if loss_dict.get("owner") == self.player_id:
+                        from types import SimpleNamespace
+                        loss = SimpleNamespace(**loss_dict)
+                        self.terminal_panel.add_hyperspace_loss(loss, self.game)
+
+            self.terminal_panel.show_info("Type 'help' for commands or start issuing orders")
+            self.terminal_panel.write("")
+
         # Focus the input field so user can start typing immediately
-        self.query_one("#command_input", Input).focus()
+        self.set_focus_to_input()
+
+    def set_focus_to_input(self) -> None:
+        """Set focus to the command input field."""
+        try:
+            input_widget = self.query_one("#command_input", Input)
+            input_widget.focus()
+        except Exception:
+            pass  # Input might not be ready yet
 
     def refresh_display(self) -> None:
         """Refresh all display panels."""
         if self.map_panel:
             self.map_panel.update_map(self.game, self.player_id)
-        if self.tables_panel:
-            self.tables_panel.update_tables(self.game, self.player_id)
+        if self.stars_table:
+            self.stars_table.update_table(self.game, self.player_id)
+        if self.fleets_table:
+            self.fleets_table.update_table(self.game, self.player_id)
 
     def update_game_state(self, new_game: Game) -> None:
         """Update the displayed game state.
@@ -265,8 +380,10 @@ class SpaceConquestTUI(App):
             self.map_panel.update_map(self.game, self.player_id)
 
         # Update tables
-        if self.tables_panel:
-            self.tables_panel.update_tables(self.game, self.player_id)
+        if self.stars_table:
+            self.stars_table.update_table(self.game, self.player_id)
+        if self.fleets_table:
+            self.fleets_table.update_table(self.game, self.player_id)
 
     def show_combat_results(self, events) -> None:
         """Display combat reports in the terminal panel.
@@ -302,6 +419,7 @@ class SpaceConquestTUI(App):
         event.input.value = ""  # Clear input
 
         if not command:
+            self.set_focus_to_input()  # Keep focus even on empty submit
             return
 
         terminal = self.terminal_panel
@@ -320,11 +438,9 @@ class SpaceConquestTUI(App):
                 terminal.show_response("Submitting 0 orders (passing turn)...")
             else:
                 terminal.show_response(f"Submitted {count} order{'s' if count != 1 else ''}")
-                terminal.show_info("(POC: orders not executed yet)")
-                terminal.write("")
-            # For actual game, would process orders here
-            self.orders.clear()
-            self.commitment_tracker.clear()
+            terminal.write("")
+            # Exit the app and return orders
+            self.exit(self.orders)
             return
 
         if cmd_lower in ("list", "ls"):
@@ -336,6 +452,7 @@ class SpaceConquestTUI(App):
                 for i, order in enumerate(self.orders, 1):
                     terminal.show_info(f"  {i}. Move {order.ships} ships: {order.from_star} -> {order.to_star}")
                 terminal.write("")
+            self.set_focus_to_input()
             return
 
         if cmd_lower in ("clear", "reset"):
@@ -346,18 +463,24 @@ class SpaceConquestTUI(App):
                 terminal.show_info("No orders to clear")
             else:
                 terminal.show_response(f"Cleared {count} order{'s' if count != 1 else ''}")
+            self.set_focus_to_input()
             return
 
         if cmd_lower in ("help", "h", "?"):
             self._show_help_inline(terminal)
+            self.set_focus_to_input()
             return
 
         if cmd_lower in ("status", "st"):
             self._show_status_inline(terminal)
+            self.set_focus_to_input()
             return
 
         if cmd_lower in ("quit", "exit", "q"):
-            self.exit()
+            # Exit the app with None to signal quit (not just submitting turn)
+            terminal.show_info("Exiting game...")
+            terminal.write("")
+            self.exit(None)  # Return None to indicate quit, not submission
             return
 
         # Try to parse as order
@@ -369,12 +492,14 @@ class SpaceConquestTUI(App):
                 terminal.show_response(f"Unknown command: '{unknown_cmd}'", is_error=True)
                 terminal.show_info("Available commands: move, done, list, clear, help, status, quit")
                 terminal.write("")
+                self.set_focus_to_input()
                 return
 
             # Validate order
             error = self._validate_order(order)
             if error:
                 terminal.show_response(f"Error: {error}", is_error=True)
+                self.set_focus_to_input()
                 return
 
             # Queue the order
@@ -390,6 +515,7 @@ class SpaceConquestTUI(App):
             terminal.show_response(
                 f"Order {order_count} queued: {order.ships} ships from {order.from_star} to {order.to_star}"
             )
+            self.set_focus_to_input()
 
         except OrderParseError as e:
             message = e.message
@@ -398,9 +524,11 @@ class SpaceConquestTUI(App):
                 terminal.show_info("Available commands: move, done, list, clear, help, status, quit")
                 terminal.show_info("Example: move 5 ships from A to B")
                 terminal.write("")
+            self.set_focus_to_input()
 
         except Exception as e:
             terminal.show_response(f"Error: {str(e)}", is_error=True)
+            self.set_focus_to_input()
 
     def _validate_order(self, order: Order) -> str:
         """Validate an order before queuing.
