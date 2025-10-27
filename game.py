@@ -46,7 +46,10 @@ class GameOrchestrator:
     def run(self) -> Game:
         """Main game loop.
 
-        Executes turns until victory condition is met.
+        Executes turns in the correct phase order:
+        1. Phases 1-3: Movement, Combat, Victory (before display)
+        2. Phase 4: Display and Order Collection
+        3. Phase 5: Production
 
         Returns:
             Final game state with winner set
@@ -61,10 +64,32 @@ class GameOrchestrator:
 
         try:
             while not self.game.winner:
-                # Get orders from both players - each sees only their perspective (fog-of-war)
+                # Execute Phases 1-3: Movement, Combat, Victory Check
+                # This happens BEFORE displaying state to players
+                try:
+                    self.game, combat_events, hyperspace_losses = (
+                        self.turn_executor.execute_phases_1_to_3(self.game)
+                    )
+                    # Store events for display
+                    self.last_combat_events = combat_events
+                    self.last_hyperspace_losses = hyperspace_losses
+                except Exception as e:
+                    print(f"Error executing phases 1-3: {e}")
+                    print("Game cannot continue. Exiting...")
+                    sys.exit(1)
+
+                # Check for victory (phases 1-3 may have triggered victory)
+                if self.game.winner:
+                    self._show_victory(
+                        combat_events, hyperspace_losses, []
+                    )
+                    break
+
+                # Phase 4: Display and Order Collection
+                # Now players see the RESULTS of movement and combat
                 orders = {}
                 for pid, controller in self.players.items():
-                    # Get orders from this player
+                    # Get orders from this player (display happens in get_orders)
                     try:
                         orders[pid] = controller.get_orders(self.game)
                     except KeyboardInterrupt:
@@ -74,26 +99,16 @@ class GameOrchestrator:
                         print(f"Error getting orders from {pid}: {e}")
                         orders[pid] = []
 
-                # Execute turn
+                # Execute Phase 5: Production
                 try:
-                    self.game, combat_events, hyperspace_losses, rebellion_events = (
-                        self.turn_executor.execute_turn(self.game, orders)
+                    self.game, rebellion_events = (
+                        self.turn_executor.execute_phases_4_to_5(self.game, orders)
                     )
-                    # Store events for display at start of next turn
-                    self.last_combat_events = combat_events
-                    self.last_hyperspace_losses = hyperspace_losses
                     self.last_rebellion_events = rebellion_events
                 except Exception as e:
-                    print(f"Error executing turn: {e}")
+                    print(f"Error executing phases 4-5: {e}")
                     print("Game cannot continue. Exiting...")
                     sys.exit(1)
-
-                # Check for victory
-                if self.game.winner:
-                    self._show_victory(
-                        combat_events, hyperspace_losses, rebellion_events
-                    )
-                    break
 
         except KeyboardInterrupt:
             print("\n\nGame interrupted by user. Exiting...")

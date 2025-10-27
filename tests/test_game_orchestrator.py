@@ -120,6 +120,9 @@ def test_display_methods_called_after_turn_execution(monkeypatch):
     """
     game = create_simple_game()
 
+    # Mock input to prevent blocking (do this BEFORE creating orchestrator)
+    monkeypatch.setattr("builtins.input", lambda _: "")
+
     # Create mock players
     mock_p1 = Mock()
     mock_p1.get_orders = Mock(return_value=[])
@@ -127,11 +130,11 @@ def test_display_methods_called_after_turn_execution(monkeypatch):
     mock_p2 = Mock()
     mock_p2.get_orders = Mock(return_value=[])
 
-    # Create orchestrator
-    orchestrator = GameOrchestrator(game, mock_p1, mock_p2)
+    # Create orchestrator with use_tui=True to skip welcome message/input
+    orchestrator = GameOrchestrator(game, mock_p1, mock_p2, use_tui=True)
 
-    # Mock input to prevent blocking
-    monkeypatch.setattr("builtins.input", lambda _: None)
+    # Mock display to suppress output during test
+    orchestrator.display.show_enhanced_victory = Mock()
 
     # Create mock combat and hyperspace events
     from src.engine.combat import CombatEvent
@@ -158,10 +161,10 @@ def test_display_methods_called_after_turn_execution(monkeypatch):
         fleet_id="p1-001", owner="p1", ships=3, origin="A", dest="B"
     )
 
-    # Execute turn should return events on first call, then set winner on second call
+    # Mock the new split-phase methods
     turn_count = [0]
 
-    def mock_execute_turn(game, orders):
+    def mock_execute_phases_1_to_3(game):
         turn_count[0] += 1
         if turn_count[0] == 1:
             # First turn: return events and store them in game object
@@ -192,13 +195,21 @@ def test_display_methods_called_after_turn_execution(monkeypatch):
             }
             game.combats_last_turn = [combat_dict]
             game.hyperspace_losses_last_turn = [loss_dict]
-            return game, [mock_combat_event], [mock_hyperspace_loss], []
+            game.turn += 1  # Increment turn (phases 1-3 do this)
+            return game, [mock_combat_event], [mock_hyperspace_loss]
         else:
             # Second turn: set winner to exit loop
             game.winner = "p1"
-            return game, [], [], []
+            game.turn += 1
+            return game, [], []
 
-    orchestrator.turn_executor.execute_turn = mock_execute_turn
+    def mock_execute_phases_4_to_5(game, orders):
+        # Phase 4-5: Just return empty rebellion events
+        game.rebellions_last_turn = []
+        return game, []
+
+    orchestrator.turn_executor.execute_phases_1_to_3 = mock_execute_phases_1_to_3
+    orchestrator.turn_executor.execute_phases_4_to_5 = mock_execute_phases_4_to_5
 
     # Run the game (should execute two turns and exit)
     final_game = orchestrator.run()

@@ -1,11 +1,14 @@
 """Main turn execution orchestrator.
 
-This module coordinates the 5 turn phases:
-1. Fleet Movement
-2. Combat Resolution
-3. Victory Assessment
-4. Orders Processing
-5. Rebellions & Production
+This module coordinates the turn phases in the correct order:
+1. Fleet Movement (Phase 1)
+2. Combat Resolution (Phase 2)
+3. Victory Assessment (Phase 3)
+4. Display Rendering & Order Collection (Phase 4) - happens in caller
+5. Rebellions & Production (Phase 5)
+
+The turn counter increments AFTER phases 1-3 but BEFORE phase 4 (display/orders),
+so that players see the results of movement/combat when making decisions.
 """
 
 import logging
@@ -25,20 +28,23 @@ logger = logging.getLogger(__name__)
 
 
 class TurnExecutor:
-    """Orchestrates the 5 turn phases."""
+    """Orchestrates the turn phases in the correct order."""
 
-    def execute_turn(
-        self, game: Game, orders: Dict[str, List[Order]]
-    ) -> tuple[Game, List[CombatEvent], List[HyperspaceLoss], List[RebellionEvent]]:
-        """Execute one complete turn.
+    def execute_phases_1_to_3(
+        self, game: Game
+    ) -> tuple[Game, List[CombatEvent], List[HyperspaceLoss]]:
+        """Execute phases 1-3: Movement, Combat, Victory Check.
+
+        This should be called BEFORE displaying state and collecting orders.
+        After this returns, the turn counter will be incremented so the display
+        shows the correct turn number.
 
         Args:
             game: Current game state
-            orders: Dictionary mapping player ID to list of orders
-                   e.g., {"p1": [Order(...), ...], "p2": [...]}
 
         Returns:
-            Tuple of (updated game state, combat events, hyperspace losses, rebellion events)
+            Tuple of (updated game state, combat events, hyperspace losses)
+            Note: If game.winner is set, the game has ended
         """
         # Phase 1: Fleet Movement
         game, hyperspace_losses = process_fleet_movement(game)
@@ -92,11 +98,31 @@ class TurnExecutor:
             game.combats_history = game.combats_history[-5:]
 
         # Phase 3: Victory Assessment
-        if check_victory(game):
-            # Game has ended - don't process remaining phases
-            # But combat events are already stored for final observations
-            return game, combat_events, hyperspace_losses, []
+        check_victory(game)
+        # If game.winner is set, the game has ended
+        # Caller should check this and not proceed with order collection
 
+        # Increment turn counter BEFORE displaying and collecting orders
+        # This ensures the display shows the correct turn after phases 1-3 execute
+        game.turn += 1
+
+        return game, combat_events, hyperspace_losses
+
+    def execute_phases_4_to_5(
+        self, game: Game, orders: Dict[str, List[Order]]
+    ) -> tuple[Game, List[RebellionEvent]]:
+        """Execute phases 4-5: Order Processing and Production.
+
+        This should be called AFTER phases 1-3 and AFTER collecting orders from players.
+
+        Args:
+            game: Current game state (with turn already incremented)
+            orders: Dictionary mapping player ID to list of orders
+                   e.g., {"p1": [Order(...), ...], "p2": [...]}
+
+        Returns:
+            Tuple of (updated game state, rebellion events)
+        """
         # Phase 4: Process Orders
         game = self._process_orders(game, orders)
 
@@ -120,8 +146,37 @@ class TurnExecutor:
             for event in rebellion_events
         ]
 
-        # Increment turn counter
-        game.turn += 1
+        return game, rebellion_events
+
+    def execute_turn(
+        self, game: Game, orders: Dict[str, List[Order]]
+    ) -> tuple[Game, List[CombatEvent], List[HyperspaceLoss], List[RebellionEvent]]:
+        """Execute one complete turn (legacy method for backward compatibility).
+
+        WARNING: This method executes all phases in one go, which means the display
+        will show state BEFORE phases 1-3 execute. This is incorrect for the main
+        game loop but may be needed for tests that expect the old behavior.
+
+        For the main game loop, use execute_phases_1_to_3() followed by
+        execute_phases_4_to_5() with display/order collection in between.
+
+        Args:
+            game: Current game state
+            orders: Dictionary mapping player ID to list of orders
+                   e.g., {"p1": [Order(...), ...], "p2": [...]}
+
+        Returns:
+            Tuple of (updated game state, combat events, hyperspace losses, rebellion events)
+        """
+        # Execute phases 1-3
+        game, combat_events, hyperspace_losses = self.execute_phases_1_to_3(game)
+
+        # Check if game ended
+        if game.winner:
+            return game, combat_events, hyperspace_losses, []
+
+        # Execute phases 4-5
+        game, rebellion_events = self.execute_phases_4_to_5(game, orders)
 
         return game, combat_events, hyperspace_losses, rebellion_events
 
@@ -334,6 +389,16 @@ class TurnExecutor:
         fleet_id = f"{player_id}-{game.fleet_counter[player_id]:03d}"
         game.fleet_counter[player_id] += 1
 
+        # IMPORTANT: Phase 1 (Fleet Movement) runs BEFORE Phase 4 (Orders Processing),
+        # so fleets created this turn won't move until next turn's Phase 1.
+        # To ensure correct arrival timing, we set dist_remaining = distance (not distance - 1).
+        # The fleet will move for the first time in the NEXT turn's Phase 1.
+        #
+        # Example timeline for distance=1:
+        # - Turn 0 Phase 1: (fleet doesn't exist yet)
+        # - Turn 0 Phase 4: Fleet created with dist_remaining=1
+        # - Turn 1 Phase 1: Fleet moves, dist_remaining 1→0, arrives
+        # - Display at Turn 1 start shows: Turn 1 + 1 - 1 = "Arrives Turn 1" (correct!)
         fleet = Fleet(
             id=fleet_id,
             owner=player_id,
