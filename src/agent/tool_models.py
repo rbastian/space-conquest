@@ -112,6 +112,7 @@ class StarObservation(BaseModel):
     stationed_ships: Optional[
         int
     ]  # Ships at this star (only for owned stars, fog-of-war)
+    distance_from_home: int  # Chebyshev distance from your home star (for quick sorting)
 
 
 class FleetObservation(BaseModel):
@@ -252,7 +253,7 @@ class StarQueryOutput(BaseModel):
 class RouteEstimate(BaseModel):
     """Output for estimate_route tool."""
 
-    distance: int = Field(ge=0, description="Manhattan distance between stars")
+    distance: int = Field(ge=0, description="Chebyshev distance between stars (8-directional movement)")
     risk: float = Field(
         ge=0.0, le=1.0, description="Cumulative hyperspace loss probability"
     )
@@ -317,7 +318,7 @@ TOOL_REGISTRY = {
     "get_observation": {
         "input_model": GetObservationInput,
         "output_model": ObservationOutput,
-        "description": "Get current game state observation for Player 2 with fog-of-war filtering. Returns turn number, STRATEGIC DASHBOARD (at-a-glance metrics: total ships, production, fleet distribution), stars (with stationed_ships for owned stars only), fleets, arrivals, combats (current turn + last 5 turns history), rebellions, hyperspace losses (YOUR fleets only), production, and game rules. STRATEGIC DASHBOARD: Provides aggregate metrics (total_ships, total_production_per_turn, controlled_stars_count, stars_by_ru distribution) for quick strategic assessment - use this to evaluate your economic position and military strength. COMBAT HISTORY: combats_last_5_turns provides up to 5 turns of combat history (oldest to newest) for strategic pattern analysis. PRODUCTION RULE: Each controlled star produces ships equal to its RU value per turn (added to stationed_ships during production phase). HYPERSPACE LOSSES: Each fleet has 2% chance per turn to be destroyed in hyperspace - you'll be notified via hyperspace_losses_last_turn.",
+        "description": "Get current game state observation for Player 2 with fog-of-war filtering. Returns turn number, STRATEGIC DASHBOARD (at-a-glance metrics: total ships, production, fleet distribution), stars (SORTED BY DISTANCE from your home star - closest first, each with distance_from_home field showing Chebyshev distance), fleets, arrivals, combats (current turn + last 5 turns history), rebellions, hyperspace losses (YOUR fleets only), production, and game rules. STARS: Sorted by distance_from_home (closest first) for easy target selection. Each star includes distance_from_home field - use this to identify nearby expansion targets without calling estimate_route. STRATEGIC DASHBOARD: Provides aggregate metrics (total_ships, total_production_per_turn, controlled_stars_count, stars_by_ru distribution) for quick strategic assessment. COMBAT HISTORY: combats_last_5_turns provides up to 5 turns of combat history (oldest to newest) for strategic pattern analysis. PRODUCTION RULE: Each controlled star produces ships equal to its RU value per turn (added to stationed_ships during production phase). HYPERSPACE LOSSES: Each fleet has 2% chance per turn to be destroyed in hyperspace.",
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
     "get_ascii_map": {
@@ -354,7 +355,7 @@ TOOL_REGISTRY = {
     "estimate_route": {
         "input_model": EstimateRouteInput,
         "output_model": RouteEstimate,
-        "description": "Calculate Manhattan distance and cumulative hyperspace loss risk for a route between two stars. Risk = 1 - (1-0.02)^distance.",
+        "description": "Calculate Chebyshev distance (8-directional movement, diagonal costs same as orthogonal) and cumulative hyperspace loss risk for a route between two stars. ALWAYS use this tool to calculate distances - do not estimate manually. Risk = 1 - (1-0.02)^distance.",
         "input_schema": {
             "type": "object",
             "properties": {

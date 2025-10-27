@@ -326,7 +326,8 @@ class TurnExecutor:
             origin_star.x, origin_star.y, dest_star.x, dest_star.y
         )
 
-        # Deduct ships from origin
+        # Deduct ships from origin star immediately
+        # This ensures ships don't participate in combat after being ordered to depart
         origin_star.stationed_ships[player_id] -= order.ships
 
         # Create fleet

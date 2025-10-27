@@ -170,6 +170,13 @@ class AgentTools:
         Returns:
             Dictionary containing turn, grid, stars, fleets, events, and rules
         """
+        # Get home star location for distance calculations
+        home_star_obj = None
+        for s in self.game.stars:
+            if s.id == self.player.home_star:
+                home_star_obj = s
+                break
+
         # Build star list with fog-of-war
         stars = []
         for star in self.game.stars:
@@ -206,6 +213,11 @@ class AgentTools:
                 stationed_ships = None  # Hidden for unvisited stars
                 control = "unknown"
 
+            # Calculate distance from home star
+            distance_from_home = chebyshev_distance(
+                star.x, star.y, home_star_obj.x, home_star_obj.y
+            )
+
             stars.append(
                 StarObservation(
                     id=star_id,
@@ -218,8 +230,12 @@ class AgentTools:
                     last_seen_control=control,
                     is_home=is_home,
                     stationed_ships=stationed_ships,
+                    distance_from_home=distance_from_home,
                 )
             )
+
+        # Sort stars by distance from home (closest first) so LLM can easily identify nearby targets
+        stars.sort(key=lambda s: s.distance_from_home)
 
         # Get Player 2's fleets
         my_fleets = []
@@ -396,7 +412,7 @@ class AgentTools:
             rules=GameRules(
                 hyperspace_loss=HYPERSPACE_LOSS_PROB,
                 rebellion_chance=REBELLION_PROB,
-                production_formula="ships_per_turn = star_ru",
+                production_formula="ships_per_turn = star_ru. IMPORTANT: Use estimate_route(from, to) tool to calculate distances - do not estimate manually from coordinates.",
             ),
         )
 
@@ -444,8 +460,11 @@ class AgentTools:
 
         # Build ASCII string
         lines = []
-        lines.append("   " + "".join(f"{i:2d}" for i in range(12)))
-        lines.append("   " + "--" * 12)
+        # Column headers: add space between each number for visual clarity
+        # This makes "9 10 11" instead of "91011" which the LLM can misread
+        header = "   " + " ".join(f"{i:2d}" for i in range(12))
+        lines.append(header)
+        lines.append("   " + "-" * (24 + 11))  # Grid is 24 chars + 11 spaces between columns
 
         for y in range(10):
             row = f"{y:2d}|" + "".join(grid[y])
