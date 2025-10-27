@@ -46,7 +46,10 @@ class GameOrchestrator:
     def run(self) -> Game:
         """Main game loop.
 
-        Executes turns until victory condition is met.
+        Executes turns in the correct phase order:
+        1. Phases 1-3: Movement, Combat, Victory (before display)
+        2. Phase 4: Display and Order Collection
+        3. Phase 5: Production
 
         Returns:
             Final game state with winner set
@@ -61,10 +64,32 @@ class GameOrchestrator:
 
         try:
             while not self.game.winner:
-                # Get orders from both players - each sees only their perspective (fog-of-war)
+                # Execute Phases 1-3: Movement, Combat, Victory Check
+                # This happens BEFORE displaying state to players
+                try:
+                    self.game, combat_events, hyperspace_losses = (
+                        self.turn_executor.execute_phases_1_to_3(self.game)
+                    )
+                    # Store events for display
+                    self.last_combat_events = combat_events
+                    self.last_hyperspace_losses = hyperspace_losses
+                except Exception as e:
+                    print(f"Error executing phases 1-3: {e}")
+                    print("Game cannot continue. Exiting...")
+                    sys.exit(1)
+
+                # Check for victory (phases 1-3 may have triggered victory)
+                if self.game.winner:
+                    self._show_victory(
+                        combat_events, hyperspace_losses, []
+                    )
+                    break
+
+                # Phase 4: Display and Order Collection
+                # Now players see the RESULTS of movement and combat
                 orders = {}
                 for pid, controller in self.players.items():
-                    # Get orders from this player
+                    # Get orders from this player (display happens in get_orders)
                     try:
                         orders[pid] = controller.get_orders(self.game)
                     except KeyboardInterrupt:
@@ -74,26 +99,16 @@ class GameOrchestrator:
                         print(f"Error getting orders from {pid}: {e}")
                         orders[pid] = []
 
-                # Execute turn
+                # Execute Phase 5: Production
                 try:
-                    self.game, combat_events, hyperspace_losses, rebellion_events = (
-                        self.turn_executor.execute_turn(self.game, orders)
+                    self.game, rebellion_events = (
+                        self.turn_executor.execute_phases_4_to_5(self.game, orders)
                     )
-                    # Store events for display at start of next turn
-                    self.last_combat_events = combat_events
-                    self.last_hyperspace_losses = hyperspace_losses
                     self.last_rebellion_events = rebellion_events
                 except Exception as e:
-                    print(f"Error executing turn: {e}")
+                    print(f"Error executing phases 4-5: {e}")
                     print("Game cannot continue. Exiting...")
                     sys.exit(1)
-
-                # Check for victory
-                if self.game.winner:
-                    self._show_victory(
-                        combat_events, hyperspace_losses, rebellion_events
-                    )
-                    break
 
         except KeyboardInterrupt:
             print("\n\nGame interrupted by user. Exiting...")
@@ -122,12 +137,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s                        # Start new game, human vs human (text mode)
-  %(prog)s --tui                  # Start with terminal user interface (TUI)
-  %(prog)s --tui --mode hvl       # TUI mode, human vs LLM
-  %(prog)s --mode hvh --seed 42   # Specific seed
-  %(prog)s --load savegame.json   # Load saved game
-  %(prog)s --save mygame.json     # Auto-save after game
+  %(prog)s                                      # Start new game, human vs human (text mode)
+  %(prog)s --tui                                # Start with terminal user interface (TUI)
+  %(prog)s --tui --mode hvl                     # TUI mode, human vs LLM (AWS Bedrock)
+  %(prog)s --mode hvl --provider openai --model gpt-4o  # Human vs OpenAI GPT-4
+  %(prog)s --mode hvl --provider ollama --model llama3  # Human vs local Ollama model
+  %(prog)s --mode hvh --seed 42                 # Specific seed
+  %(prog)s --load savegame.json                 # Load saved game
+  %(prog)s --save mygame.json                   # Auto-save after game
         """,
     )
 
@@ -138,10 +155,26 @@ Examples:
         help="Game mode: hvh=human vs human, hvl=human vs LLM, lvl=LLM vs LLM (default: hvh)",
     )
     parser.add_argument(
+        "--provider",
+        choices=["bedrock", "openai", "anthropic", "ollama"],
+        default="bedrock",
+        help="LLM provider: bedrock=AWS Bedrock, openai=OpenAI API, anthropic=Anthropic API, ollama=local models (default: bedrock)",
+    )
+    parser.add_argument(
         "--model",
-        choices=["haiku", "haiku45", "sonnet", "opus"],
-        default="haiku",
-        help="LLM model for AI player: haiku=fast/cheap, haiku45=Claude 4.5, sonnet=balanced, opus=most capable (default: haiku)",
+        type=str,
+        default=None,
+        help="LLM model name (provider-specific). Examples: "
+        "Bedrock: haiku, sonnet, opus | "
+        "OpenAI: gpt-4o, gpt-4o-mini, gpt-3.5-turbo | "
+        "Anthropic: claude-3-5-sonnet-20241022, haiku, opus | "
+        "Ollama: llama3, mistral, mixtral (default: provider-specific default)",
+    )
+    parser.add_argument(
+        "--api-base",
+        type=str,
+        default=None,
+        help="API base URL (for Ollama, default: http://localhost:11434)",
     )
     parser.add_argument(
         "--seed",
@@ -161,7 +194,7 @@ Examples:
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Enable debug logging (shows verbose LLM tool calls and iterations)",
+        help="Enable debug logging and verbose AI reasoning (shows AI's thought process, uses more tokens/costs more)",
     )
     parser.add_argument(
         "--tui",
@@ -180,6 +213,13 @@ Examples:
         format="[%(levelname)s] %(message)s",  # Show log level with message
         handlers=[logging.StreamHandler(sys.stdout)],
     )
+
+    # Suppress noisy HTTP request logs from httpx, openai, and httpcore
+    # These are moved to DEBUG level - only visible with --debug flag
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("anthropic").setLevel(logging.WARNING)
 
     # Initialize game
     if args.load:
@@ -214,28 +254,51 @@ Examples:
             p1 = HumanPlayer("p1")
             p2 = HumanPlayer("p2")
     elif args.mode == "hvl":
-        print(f"Initializing Human vs LLM game (using {args.model})...")
+        model_display = args.model or f"{args.provider} default"
+        print(f"Initializing Human vs LLM game ({args.provider} provider, model: {model_display})...")
         if args.tui:
             from src.interface.tui_player import TUIPlayer
             p1 = TUIPlayer("p1")
         else:
             p1 = HumanPlayer("p1")
         try:
-            # Try to use real Bedrock client, fall back to mock if unavailable
-            p2 = LLMPlayer("p2", use_mock=False, model=args.model, verbose=args.debug)
+            # Try to use real LLM client, fall back to mock if unavailable
+            p2 = LLMPlayer(
+                "p2",
+                use_mock=False,
+                provider=args.provider,
+                model=args.model,
+                api_base=args.api_base,
+                verbose=args.debug,
+            )
             print("LLM player initialized successfully!")
         except Exception as e:
-            print(f"Warning: Could not initialize Bedrock client: {e}")
+            print(f"Warning: Could not initialize {args.provider} client: {e}")
             print("Falling back to mock LLM player (for testing only)")
             p2 = LLMPlayer("p2", use_mock=True, verbose=args.debug)
     else:  # lvl
-        print(f"Initializing LLM vs LLM game (both using {args.model})...")
+        model_display = args.model or f"{args.provider} default"
+        print(f"Initializing LLM vs LLM game ({args.provider} provider, model: {model_display})...")
         try:
-            p1 = LLMPlayer("p1", use_mock=False, model=args.model, verbose=args.debug)
-            p2 = LLMPlayer("p2", use_mock=False, model=args.model, verbose=args.debug)
+            p1 = LLMPlayer(
+                "p1",
+                use_mock=False,
+                provider=args.provider,
+                model=args.model,
+                api_base=args.api_base,
+                verbose=args.debug,
+            )
+            p2 = LLMPlayer(
+                "p2",
+                use_mock=False,
+                provider=args.provider,
+                model=args.model,
+                api_base=args.api_base,
+                verbose=args.debug,
+            )
             print("Both LLM players initialized successfully!")
         except Exception as e:
-            print(f"Warning: Could not initialize Bedrock client: {e}")
+            print(f"Warning: Could not initialize {args.provider} client: {e}")
             print("Falling back to mock LLM players (for testing only)")
             p1 = LLMPlayer("p1", use_mock=True, verbose=args.debug)
             p2 = LLMPlayer("p2", use_mock=True, verbose=args.debug)

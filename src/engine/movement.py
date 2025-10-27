@@ -5,6 +5,10 @@ This module handles:
 2. Fleet movement (decrement dist_remaining)
 3. Fleet arrivals (dist_remaining == 0)
 4. Fog-of-war reveal (star RU reveal to arriving player)
+
+Note: Ships are deducted from origin stars in Phase 4 when fleets are created,
+NOT in Phase 1. This ensures ships don't participate in combat at their origin
+after being ordered to depart.
 """
 
 from dataclasses import dataclass
@@ -43,7 +47,10 @@ def process_fleet_movement(game: Game) -> tuple[Game, List[HyperspaceLoss]]:
     2. Decrement dist_remaining for surviving fleets
     3. Process arrivals (dist_remaining == 0):
        - Add arriving fleet ships to star.stationed_ships[owner]
-    4. Reveal star RU to arriving player (update known_ru)
+       - Reveal star RU to arriving player (update known_ru)
+
+    Note: Ships are already deducted from origin stars in Phase 4 when fleets
+    are created, so no departure processing is needed here.
 
     Args:
         game: Current game state

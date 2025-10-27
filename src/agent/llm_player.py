@@ -1,8 +1,9 @@
 """LLM-powered AI player controller.
 
-Implements an AI opponent using AWS Bedrock (Claude) with function calling
-to play Space Conquest. The agent observes the game state through fog-of-war
-filtered tools and makes strategic decisions.
+Implements an AI opponent using various LLM providers (AWS Bedrock, OpenAI,
+Anthropic API, Ollama) with function calling to play Space Conquest.
+The agent observes the game state through fog-of-war filtered tools and
+makes strategic decisions.
 """
 
 import json
@@ -11,8 +12,8 @@ from typing import List
 
 from ..models.game import Game
 from ..models.order import Order
-from .bedrock_client import BedrockClient, MockBedrockClient
-from .prompts import SYSTEM_PROMPT
+from .langchain_client import LangChainClient, MockLangChainClient
+from .prompts import get_system_prompt
 from .tools import TOOL_DEFINITIONS, AgentTools
 
 
@@ -22,26 +23,30 @@ logger = logging.getLogger(__name__)
 class LLMPlayer:
     """LLM-powered AI player controller.
 
-    Uses Claude via AWS Bedrock to make strategic decisions in Space Conquest.
-    Implements the same interface as HumanPlayer so it can be used interchangeably.
+    Uses various LLM providers (AWS Bedrock, OpenAI, Anthropic, Ollama) to make
+    strategic decisions in Space Conquest. Implements the same interface as
+    HumanPlayer so it can be used interchangeably.
     """
 
     def __init__(
         self,
         player_id: str = "p2",
         use_mock: bool = False,
-        model: str = None,
+        provider: str = "bedrock",
+        model: str | None = None,
         region: str = "us-east-1",
+        api_base: str | None = None,
         verbose: bool = False,
     ):
         """Initialize LLM player controller.
 
         Args:
             player_id: Player ID ("p1" or "p2", default: "p2")
-            use_mock: Use mock client instead of real Bedrock (for testing)
-            model: Model name ("haiku", "haiku45", "sonnet", "opus") or full Bedrock model ID
-                  Default: haiku (Claude 3.5 Haiku)
-            region: AWS region
+            use_mock: Use mock client instead of real LLM (for testing)
+            provider: LLM provider ("bedrock", "openai", "anthropic", "ollama")
+            model: Model name (provider-specific) or None for provider default
+            region: AWS region (for Bedrock, default: us-east-1)
+            api_base: API base URL (for Ollama, default: http://localhost:11434)
             verbose: Print detailed tool calls and responses
         """
         self.player_id = player_id
@@ -50,20 +55,25 @@ class LLMPlayer:
         # Note: Logger level is configured globally in game.py based on --debug flag.
         # Do NOT set logger levels here as it overrides the centralized configuration.
 
-        # Initialize Bedrock client
+        # Initialize LLM client
         if use_mock:
-            self.client = MockBedrockClient()
-            logger.info("Using mock Bedrock client")
+            self.client = MockLangChainClient(provider=provider, model_id=model)
+            logger.info(f"Using mock {provider} client")
         else:
             try:
-                self.client = BedrockClient(
-                    model_id=model, region=region, temperature=0.7, max_tokens=4096
+                self.client = LangChainClient(
+                    provider=provider,
+                    model_id=model,
+                    region=region,
+                    api_base=api_base,
+                    temperature=0.7,
+                    max_tokens=4096,
                 )
-                logger.info(f"Initialized Bedrock client: {self.client.model_id}")
+                logger.info(f"Initialized {provider} client: {self.client.model_id}")
             except Exception as e:
-                logger.error(f"Failed to initialize Bedrock client: {e}")
+                logger.error(f"Failed to initialize {provider} client: {e}")
                 logger.info("Falling back to mock client")
-                self.client = MockBedrockClient()
+                self.client = MockLangChainClient(provider=provider, model_id=model)
 
         # Conversation history (for multi-turn context if needed)
         self.conversation_history = []
@@ -103,10 +113,11 @@ class LLMPlayer:
         for iteration in range(max_iterations):
             logger.debug(f"Iteration {iteration + 1}/{max_iterations}")
 
-            # Invoke Claude
+            # Invoke LLM with appropriate prompt (verbose mode uses more tokens but shows reasoning)
+            system_prompt = get_system_prompt(verbose=self.verbose)
             response = self.client.invoke(
                 messages=messages,
-                system=SYSTEM_PROMPT,
+                system=system_prompt,
                 tools=TOOL_DEFINITIONS,
                 max_iterations=1,  # We handle the loop ourselves
             )
@@ -179,29 +190,36 @@ class LLMPlayer:
         results = []
 
         for block in content_blocks:
-            # Log text blocks (Claude's reasoning)
+            # Log text blocks (LLM's reasoning)
             if block.get("type") == "text":
                 text_content = block.get("text", "")
                 if text_content:
-                    logger.info(f"[Claude] {text_content}")
+                    # Show provider name in logs
+                    provider_name = getattr(self.client, 'provider', 'LLM').upper()
+                    logger.info(f"[{provider_name}] {text_content}")
 
             elif block.get("type") == "tool_use":
                 tool_use_id = block["id"]
                 tool_name = block["name"]
                 tool_input = block.get("input", {})
 
-                logger.debug(f"Executing tool: {tool_name}")
-                if tool_input:
-                    logger.debug(f"  Input: {json.dumps(tool_input, indent=2)}")
+                logger.info(f"  → Calling tool: {tool_name}")
+                if tool_input and logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(f"    Input: {json.dumps(tool_input, indent=2)}")
 
                 # Execute the tool
                 try:
                     result = self._call_tool(tool_name, tool_input, tools)
                     result_content = json.dumps(result)
 
-                    logger.debug(
-                        f"  Result: {result_content[:200]}{'...' if len(result_content) > 200 else ''}"
-                    )
+                    if logger.isEnabledFor(logging.DEBUG):
+                        # Show full results for get_observation, truncate others
+                        if tool_name == "get_observation":
+                            logger.debug(f"    Result: {json.dumps(result, indent=2)}")
+                        else:
+                            logger.debug(
+                                f"    Result: {result_content[:200]}{'...' if len(result_content) > 200 else ''}"
+                            )
 
                     results.append(
                         {"tool_use_id": tool_use_id, "content": result_content}
@@ -209,7 +227,7 @@ class LLMPlayer:
 
                 except Exception as e:
                     error_msg = f"Tool execution failed: {str(e)}"
-                    logger.warning(f"  Error: {error_msg}")
+                    logger.warning(f"  ✗ Error: {error_msg}")
 
                     results.append(
                         {

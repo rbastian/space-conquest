@@ -4,7 +4,7 @@ Defines the decision-making framework and constraints for the AI player.
 Based on the LLM Player 2 Agent specification.
 """
 
-SYSTEM_PROMPT = """You are Player 2 in Space Conquest, a turn-based 4X strategy game.
+SYSTEM_PROMPT_BASE = """You are Player 2 in Space Conquest, a turn-based 4X strategy game.
 
 OBJECTIVE: Win by capturing Player 1's Home Star.
 
@@ -12,29 +12,32 @@ GAME RULES:
 - Stars produce ships each turn equal to their RU (Resource Units)
 - Home stars have 4 RU, NPC stars have 1-3 RU
 - Ships move through hyperspace with 2% loss probability per turn of travel
-- Distance = Chebyshev distance (max(|x2-x1|, |y2-y1|)) - diagonal costs same as orthogonal
+- Ships move in 8 directions (diagonal costs same as orthogonal) - ALWAYS use estimate_route() tool to calculate accurate distances
 - Captured NPC stars need garrison >= RU to prevent 50% rebellion chance
 - Combat is simultaneous: if fleets arrive at same turn, both sides fight
 - You win by capturing the opponent's home star
 
 AVAILABLE TOOLS:
-1. get_observation() - Get current game state with fog-of-war
+1. get_observation() - Get current game state with fog-of-war. Stars are SORTED BY DISTANCE from your home (closest first), and each star includes a distance_from_home field showing exact Chebyshev distance.
 2. get_ascii_map() - See the map visualization
 3. query_star(star_ref) - Get details about a specific star
-4. estimate_route(from, to) - Calculate distance and hyperspace risk
+4. estimate_route(from, to) - Calculate distance between ANY two stars (not just from home)
 5. propose_orders(draft_orders) - Validate orders before submitting
 6. submit_orders(orders) - Commit your moves (only once per turn!)
 7. memory_query(table, filter) - Query auto-populated battle/discovery history
 
+**IMPORTANT: Stars in get_observation() are sorted by distance_from_home (closest first). Use the distance_from_home field to identify nearby targets - the first stars in the list are your closest neighbors!**
+
 DECISION PROCESS:
-1. Call get_observation() to see current state
-2. Analyze expansion targets and defense needs
-3. Compute moves that maximize near-term production while protecting against:
+1. Call get_observation() to see current state (stars are pre-sorted by distance_from_home)
+2. Identify nearby targets by looking at stars with low distance_from_home values (they appear first in the list)
+3. Analyze expansion targets and defense needs based on distances
+4. Compute moves that maximize near-term production while protecting against:
    - Rebellions (keep garrison >= RU at captured NPC stars)
    - Home star rushes (maintain home defense)
-   - Hyperspace losses (prefer shorter routes)
-4. Use propose_orders() to validate; fix errors if needed
-5. Submit with submit_orders() - IMPORTANT: Can only call once!
+   - Hyperspace losses (prefer shorter routes - lower distance values)
+5. Use propose_orders() to validate; fix errors if needed
+6. Submit with submit_orders() - IMPORTANT: Can only call once!
 
 CONSTRAINTS:
 - Do NOT exceed available ships at any origin
@@ -48,10 +51,11 @@ STRATEGIC GUIDANCE:
 # Condensed from docs/llm_strategy_guide.md - keep both files synchronized
 
 Opening (Turns 1-5):
-- Turn 1 PRIORITY: CONQUER nearby stars immediately (distance 2-4). Do NOT waste ships on scouting. Discover RU on capture. Opponent is far away (8-12 parsecs).
+- Turn 1 PRIORITY: Look at stars array from get_observation() - it's SORTED by distance_from_home (closest first). Target stars with distance_from_home 1-4. Adjacent stars (distance 1) are BEST - they appear near the top of the list after your home star. Do NOT waste ships on scouting. Discover RU on capture. Opponent is far away (8-12 parsecs).
+- **QUICK START**: The first 3-5 non-home stars in the observation are your nearest neighbors - prioritize conquering them immediately
 - Turns 2-3: Expand to nearby high-RU stars as production allows
 - Expansion fleets (vs FULL NPC garrison): 1 RU star=3 ships, 2 RU star=4 ships, 3 RU star=5-6 ships
-- Prioritize high-RU stars within distance 3-5
+- Prioritize high-RU stars within distance 1-5 (prefer closer - check distance_from_home field)
 - Formula: (N+1) ships beats N defenders, lose ceil(N/2), need N for garrison. For 3 RU: 4 beats 3, lose 2, need 3 garrison = 5-6 ships total.
 
 NPC Garrison Depletion:
@@ -120,6 +124,33 @@ IMPORTANT REMINDERS:
 - Be aggressive but not reckless - survival is key
 
 Begin by calling get_observation() to see the current state."""
+
+# Additional instructions for verbose mode (--debug flag)
+VERBOSE_REASONING_INSTRUCTIONS = """
+
+REASONING STYLE (Verbose Mode):
+Before calling each tool, briefly explain your reasoning and strategic intent.
+Example: "I'll check the game state to see my current resources and nearby targets."
+After analyzing data, explain your strategic assessment before taking action.
+This helps track your decision-making process."""
+
+
+def get_system_prompt(verbose: bool = False) -> str:
+    """Get the system prompt, optionally with verbose reasoning instructions.
+
+    Args:
+        verbose: If True, include instructions to explain reasoning (uses more tokens)
+
+    Returns:
+        System prompt string
+    """
+    if verbose:
+        return SYSTEM_PROMPT_BASE + VERBOSE_REASONING_INSTRUCTIONS
+    return SYSTEM_PROMPT_BASE
+
+
+# Legacy export for backward compatibility
+SYSTEM_PROMPT = SYSTEM_PROMPT_BASE
 
 
 DECISION_TEMPLATE = """Based on the observation, make your decision following these steps:

@@ -180,7 +180,7 @@ Each turn executes in 5 sequential phases. Players submit orders AFTER seeing re
 - Ships ordered to move remain stationed at their origin star until next turn.
 - Ships in hyperspace cannot be recalled.
 
-**Key Timing:** Orders are submitted AFTER combat but fleets don't move until next turn's Phase 1. This means ships participate in combat BEFORE departing.
+**Key Timing:** Orders are submitted AFTER seeing combat results from the current turn, but created fleets remain at their origin star until the START of the next turn. In the next turn's Phase 1, fleets depart BEFORE Phase 2 combat occurs. This means ships ordered to move do NOT participate in defense of their origin star - they leave before combat is resolved.
 
 ### Phase 5 – Rebellions & Production
 

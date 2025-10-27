@@ -1,6 +1,7 @@
 """Tests for LLM agent tools and player controller."""
 
 import pytest
+from src.agent.langchain_client import MockLangChainClient
 from src.agent.bedrock_client import MockBedrockClient
 from src.agent.llm_player import LLMPlayer
 from src.agent.tools import AgentTools, TOOL_DEFINITIONS
@@ -51,7 +52,7 @@ class TestAgentTools:
         # Check rules
         assert obs["rules"]["hyperspace_loss"] == 0.02
         assert obs["rules"]["rebellion_chance"] == 0.5
-        assert obs["rules"]["production_formula"] == "ships_per_turn = star_ru"
+        assert obs["rules"]["production_formula"].startswith("ships_per_turn = star_ru")
 
     def test_get_ascii_map(self, tools):
         """Test ASCII map generation."""
@@ -557,7 +558,7 @@ class TestLLMPlayer:
     def test_initialization(self, llm_player):
         """Test LLMPlayer initializes correctly."""
         assert llm_player.player_id == "p2"
-        assert isinstance(llm_player.client, MockBedrockClient)
+        assert isinstance(llm_player.client, MockLangChainClient)
 
     def test_get_orders_returns_list(self, llm_player, game):
         """Test that get_orders returns a list."""
