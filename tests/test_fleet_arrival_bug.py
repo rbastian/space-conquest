@@ -92,11 +92,11 @@ def test_fleet_arrives_turn_3_after_creation_turn_2():
     if game.fleets:
         print(f"Fleet[0]: dist_remaining={game.fleets[0].dist_remaining}")
 
-        # This is the state the user sees at START of Turn 3
-        # Display formula: arrival_turn = game.turn + fleet.dist_remaining - 1
-        arrival_turn = game.turn + game.fleets[0].dist_remaining - 1
+        # This is the state the user sees at START of Turn 3 (after phases 1-3 of turn 3 complete)
+        # Display formula (after fix): arrival_turn = game.turn + fleet.dist_remaining
+        arrival_turn = game.turn + game.fleets[0].dist_remaining
         print(f"Display shows: 'Arrives Turn {arrival_turn}'")
-        print(f"Expected: Turn 3 (correct!)")
+        print(f"Expected: Turn 4 (fleet will arrive in Phase 1 of turn 4)")
 
     # Turn 3: No orders - fleet should arrive during Phase 1
     print(f"\n=== Turn {game.turn} START (BEFORE Phase 1) ===")

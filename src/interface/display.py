@@ -346,14 +346,14 @@ class DisplayManager:
             dest_col = self._format_centered(fleet.dest, 6)
 
             # Calculate absolute turn number
-            # Note: We display the state BEFORE Phase 1 runs, but Phase 1 will move fleets
-            # during this turn. So a fleet with dist_remaining=1 will arrive THIS turn (after Phase 1).
-            # Formula: current_turn + dist_remaining - 1
-            arrival_turn = game.turn + fleet.dist_remaining - 1
+            # Note: We display the state AFTER Phases 1-3 have run. The turn counter has
+            # already incremented. A fleet with dist_remaining=1 will arrive NEXT turn (in Phase 1).
+            # Formula: current_turn + dist_remaining
+            arrival_turn = game.turn + fleet.dist_remaining
 
-            # Make it clearer whether fleet arrives THIS turn or a FUTURE turn
-            # Use arrow symbol to indicate "arriving this turn"
-            if arrival_turn == game.turn:
+            # Make it clearer whether fleet arrives NEXT turn or a FUTURE turn
+            # Use arrow symbol to indicate "arriving next turn"
+            if arrival_turn == game.turn + 1:
                 arrives_text = f"Turn {arrival_turn} →"
             else:
                 arrives_text = f"Turn {arrival_turn}"

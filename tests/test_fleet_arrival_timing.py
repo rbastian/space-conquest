@@ -143,12 +143,16 @@ def test_fleet_in_transit_shows_correct_arrival_turn():
     fleet = game.fleets[0]
     assert fleet.dist_remaining == 1
 
-    # Display uses formula: arrival_turn = game.turn + fleet.dist_remaining - 1
-    # At Turn 0 with dist_remaining=1: 0 + 1 - 1 = Turn 0 (which is wrong!)
-    # The formula only works correctly after turn counter increments.
-    # After Turn 0 execution, turn=1, dist_remaining=1: 1 + 1 - 1 = Turn 1 (correct!)
+    # Display uses formula (after fix): arrival_turn = game.turn + fleet.dist_remaining
+    # This test is checking the intermediate state BEFORE phases 1-3 execute.
+    # In the real game, players never see this state - they only see state AFTER phases 1-3.
+    # At Turn 0 (before phases run) with dist_remaining=1:
+    #   - Old formula: 0 + 1 - 1 = Turn 0 (wrong - fleet can't arrive in past!)
+    #   - New formula: 0 + 1 = Turn 1 (correct - fleet will arrive in Turn 1 Phase 1)
+    # After Turn 0 phases run, turn=1, dist_remaining=1:
+    #   - New formula: 1 + 1 = Turn 2 (correct - fleet will arrive in Turn 2 Phase 1)
 
-    # For now, just verify the fleet was created with correct dist_remaining
+    # Verify the fleet was created with correct dist_remaining
     assert fleet.dist_remaining == 1, f"Fleet should have dist_remaining=1, got {fleet.dist_remaining}"
 
 
