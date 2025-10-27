@@ -1,4 +1,4 @@
-"""Test that the display shows an arrow indicator for fleets arriving this turn."""
+"""Test that the display shows fleet arrival turns correctly."""
 
 from io import StringIO
 import sys
@@ -10,8 +10,8 @@ from src.models.player import Player
 from src.models.star import Star
 
 
-def test_fleet_arriving_this_turn_shows_arrow():
-    """Test that a fleet arriving NEXT iteration shows '→' indicator.
+def test_fleet_arriving_next_turn():
+    """Test that a fleet arriving NEXT iteration shows the correct turn number.
 
     After game loop fix, displays are shown AFTER phases 1-3 execute.
     So 'arriving next' means arriving in the next iteration's Phase 1.
@@ -47,7 +47,6 @@ def test_fleet_arriving_this_turn_shows_arrow():
 
     # Create fleet that will arrive in NEXT iteration
     # At Turn 3 with dist_remaining=1: arrival_turn = 3 + 1 = 4 (next iteration!)
-    # Arrow means: will arrive before "Turn 4" display shows
     fleet_arriving = Fleet(
         id="p1-001",
         owner="p1",
@@ -84,20 +83,20 @@ def test_fleet_arriving_this_turn_shows_arrow():
     print("\n=== Display Output ===")
     print(output)
 
-    # Verify output contains the arrow indicator for arriving fleet
-    assert "Turn 4 →" in output, "Fleet arriving next iteration should show arrow indicator"
-    assert "Turn 5" in output, "Fleet arriving in future should NOT show arrow"
-    assert "Turn 5 →" not in output, "Only next-iteration arrivals should have arrow"
+    # Verify output shows correct turn numbers
+    assert "Turn 4" in output, "Fleet arriving next iteration should show Turn 4"
+    assert "Turn 5" in output, "Fleet arriving in future should show Turn 5"
+    assert "→" not in output, "Arrow indicator should not be shown"
 
     # Verify both fleets are shown
     assert "p1-001" in output
     assert "p1-002" in output
 
-    print("✓ Display correctly indicates fleet arriving next iteration with '→'")
+    print("✓ Display correctly shows fleet arrival turns")
 
 
-def test_fleet_arriving_future_turn_no_arrow():
-    """Test that fleets arriving in FUTURE turns don't show arrow."""
+def test_fleet_arriving_future_turn():
+    """Test that fleets arriving in FUTURE turns show the correct turn number."""
     game = Game(seed=42, turn=1)
 
     star_a = Star(
@@ -127,7 +126,6 @@ def test_fleet_arriving_future_turn_no_arrow():
 
     # Fleet arriving Turn 6 (far in future, not next iteration)
     # At Turn 1 with dist_remaining=5: arrival_turn = 1 + 5 = 6
-    # No arrow because arrival_turn (6) != game.turn + 1 (2)
     fleet = Fleet(
         id="p1-001",
         owner="p1",
@@ -151,8 +149,8 @@ def test_fleet_arriving_future_turn_no_arrow():
     print("\n=== Display Output ===")
     print(output)
 
-    # Verify NO arrow for future arrival
+    # Verify correct turn display
     assert "Turn 6" in output, "Should show arrival turn"
-    assert "→" not in output, "Should NOT show arrow for future arrival"
+    assert "→" not in output, "Should NOT show arrow indicator"
 
-    print("✓ Display correctly shows no arrow for future arrivals")
+    print("✓ Display correctly shows arrival turn for future arrivals")

@@ -350,13 +350,7 @@ class DisplayManager:
             # already incremented. A fleet with dist_remaining=1 will arrive NEXT turn (in Phase 1).
             # Formula: current_turn + dist_remaining
             arrival_turn = game.turn + fleet.dist_remaining
-
-            # Make it clearer whether fleet arrives NEXT turn or a FUTURE turn
-            # Use arrow symbol to indicate "arriving next turn"
-            if arrival_turn == game.turn + 1:
-                arrives_text = f"Turn {arrival_turn} →"
-            else:
-                arrives_text = f"Turn {arrival_turn}"
+            arrives_text = f"Turn {arrival_turn}"
             arrives_col = self._format_left(arrives_text, 9)
 
             print(f"│{fleet_id_col}│{ships_col}│{origin_col}│{dest_col}│{arrives_col}│")
