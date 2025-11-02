@@ -6,29 +6,32 @@ respect fog-of-war constraints and only expose Player 2's view.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
+from ..engine.combat import resolve_combat
 from ..models.game import Game
 from ..models.order import Order
-from ..utils.constants import HYPERSPACE_LOSS_PROB, REBELLION_PROB
+from ..utils.constants import HYPERSPACE_LOSS_PROB
 from ..utils.distance import chebyshev_distance
 from .tool_models import (
     TOOL_REGISTRY,
-    TOOL_DEFINITIONS,
-    ObservationOutput,
-    StarObservation,
-    FleetObservation,
     ArrivalObservation,
+    CombatReport,
+    CombatSimulationOutput,
+    FleetObservation,
+    FleetSplittingWarning,
+    ForceRequirementsOutput,
+    GarrisonWarning,
+    HyperspaceLossReport,
+    ObservationOutput,
     ProductionReport,
     RebellionReport,
-    HyperspaceLossReport,
-    CombatReport,
-    GameRules,
-    GarrisonWarning,
+    StarObservation,
+    ThreatAnalysisOutput,
 )
 
 
@@ -52,7 +55,7 @@ class AgentTools:
         self.opponent_id = "p1" if player_id == "p2" else "p2"
 
         # Simple memory store (dict for now)
-        self.memory: Dict[str, List[Dict]] = {
+        self.memory: dict[str, list[dict]] = {
             "battle_log": [],  # Auto-populated: PvP combat history only
             "discovery_log": [],  # Auto-populated: star discoveries
         }
@@ -66,12 +69,10 @@ class AgentTools:
             )
 
         # Pending orders (for validation before submission)
-        self.pending_orders: Optional[List[Order]] = None
+        self.pending_orders: list[Order] | None = None
         self.orders_submitted = False
 
-    def _determine_participation(
-        self, combat_dict: Dict[str, Any]
-    ) -> tuple[bool, bool]:
+    def _determine_participation(self, combat_dict: dict[str, Any]) -> tuple[bool, bool]:
         """Determine if player participated in combat and their role.
 
         Args:
@@ -103,9 +104,7 @@ class AgentTools:
 
         return False, False
 
-    def _translate_winner(
-        self, winner_role: Optional[str], attacker: str, defender: str
-    ) -> str:
+    def _translate_winner(self, winner_role: str | None, attacker: str, defender: str) -> str:
         """Translate combat winner role to player ID format.
 
         Args:
@@ -140,7 +139,7 @@ class AgentTools:
         else:
             return "tie"
 
-    def _did_control_change(self, combat_type: str, winner_role: Optional[str]) -> bool:
+    def _did_control_change(self, combat_type: str, winner_role: str | None) -> bool:
         """Determine if star control changed hands.
 
         Args:
@@ -159,7 +158,7 @@ class AgentTools:
         else:  # pvp
             return winner_role is not None
 
-    def get_observation(self) -> Dict[str, Any]:
+    def get_observation(self) -> dict[str, Any]:
         """Get Player 2's current game state observation.
 
         Returns observation JSON with fog-of-war filtering applied.
@@ -259,15 +258,13 @@ class AgentTools:
         ]
 
         # Get combat reports from last turn (filter by player participation)
-        def transform_combat_dict(combat_dict: Dict[str, Any]) -> Optional[CombatReport]:
+        def transform_combat_dict(combat_dict: dict[str, Any]) -> CombatReport | None:
             """Transform a single combat dict to CombatReport with perspective.
 
             Returns None if player didn't participate in this combat.
             """
             # Check if player participated and in what role
-            player_participated, is_attacker = self._determine_participation(
-                combat_dict
-            )
+            player_participated, is_attacker = self._determine_participation(combat_dict)
 
             if not player_participated:
                 return None
@@ -278,7 +275,7 @@ class AgentTools:
             defender_id = combat_dict.get("defender")
 
             # Transform perspective: convert player IDs to "me"/"opp"/"npc"
-            def transform_player(pid: Optional[str]) -> Optional[str]:
+            def transform_player(pid: str | None) -> str | None:
                 if pid is None:
                     return None
                 if pid == "npc":
@@ -358,9 +355,7 @@ class AgentTools:
         for star in self.game.stars:
             if star.owner == self.player_id:
                 # Ships produced = base_ru
-                production.append(
-                    ProductionReport(star=star.id, ships_produced=star.base_ru)
-                )
+                production.append(ProductionReport(star=star.id, ships_produced=star.base_ru))
 
         # Calculate strategic dashboard
         controlled_stars = [s for s in self.game.stars if s.owner == self.player_id]
@@ -378,9 +373,7 @@ class AgentTools:
         for star in controlled_stars:
             stars_by_ru[star.base_ru] = stars_by_ru.get(star.base_ru, 0) + 1
 
-        avg_fleet_size = (
-            total_ships_in_transit / len(my_fleets) if my_fleets else 0.0
-        )
+        avg_fleet_size = total_ships_in_transit / len(my_fleets) if my_fleets else 0.0
 
         from .tool_models import StrategicDashboard
 
@@ -409,11 +402,6 @@ class AgentTools:
             rebellions_last_turn=rebellions,
             hyperspace_losses_last_turn=hyperspace_losses,
             production_report=production,
-            rules=GameRules(
-                hyperspace_loss=HYPERSPACE_LOSS_PROB,
-                rebellion_chance=REBELLION_PROB,
-                production_formula="ships_per_turn = star_ru. IMPORTANT: Use estimate_route(from, to) tool to calculate distances - do not estimate manually from coordinates.",
-            ),
         )
 
         return output.model_dump()
@@ -507,7 +495,7 @@ class AgentTools:
             f"(must be a letter ID like 'A' or numeric index like '0')"
         )
 
-    def query_star(self, star_ref: str) -> Dict[str, Any]:
+    def query_star(self, star_ref: str) -> dict[str, Any]:
         """Query information about a specific star.
 
         Returns all available information. If the star hasn't been visited,
@@ -593,7 +581,7 @@ class AgentTools:
 
         return result
 
-    def estimate_route(self, from_star: str, to_star: str) -> Dict[str, Any]:
+    def estimate_route(self, from_star: str, to_star: str) -> dict[str, Any]:
         """Estimate route distance and hyperspace risk.
 
         Calculates Chebyshev distance and cumulative hyperspace loss
@@ -636,7 +624,7 @@ class AgentTools:
 
         return {"distance": distance, "risk": round(risk, 4)}
 
-    def propose_orders(self, draft_orders: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def propose_orders(self, draft_orders: list[dict[str, Any]]) -> dict[str, Any]:
         """Validate draft orders without submitting.
 
         WARNING: Multiple orders from the same star are CUMULATIVE.
@@ -665,7 +653,7 @@ class AgentTools:
         errors = []
 
         # Track ships moved from each star (using resolved IDs)
-        ships_moved: Dict[str, int] = {}
+        ships_moved: dict[str, int] = {}
 
         for i, order_dict in enumerate(draft_orders):
             # Validate schema
@@ -735,12 +723,18 @@ class AgentTools:
                     f"(only {stationed} stationed)"
                 )
 
-        # Calculate garrison warnings even if there are errors
+        # Calculate warnings even if there are errors
         # (useful to show both errors and warnings)
-        warnings = self._calculate_garrison_warnings(draft_orders)
+        garrison_warnings = self._calculate_garrison_warnings(draft_orders)
+        fleet_splitting_warnings = self._calculate_fleet_splitting_warnings(draft_orders)
+
+        # Combine all warnings
+        all_warnings = [w.model_dump() for w in garrison_warnings] + [
+            w.model_dump() for w in fleet_splitting_warnings
+        ]
 
         if errors:
-            return {"ok": False, "errors": errors, "warnings": [w.model_dump() for w in warnings]}
+            return {"ok": False, "errors": errors, "warnings": all_warnings}
         else:
             # Store pending orders with resolved IDs
             resolved_orders = []
@@ -751,9 +745,11 @@ class AgentTools:
                     Order(from_star=from_star, to_star=to_star, ships=o["ships"])
                 )
             self.pending_orders = resolved_orders
-            return {"ok": True, "warnings": [w.model_dump() for w in warnings]}
+            return {"ok": True, "warnings": all_warnings}
 
-    def _calculate_garrison_warnings(self, draft_orders: List[Dict[str, Any]]) -> list[GarrisonWarning]:
+    def _calculate_garrison_warnings(
+        self, draft_orders: list[dict[str, Any]]
+    ) -> list[GarrisonWarning]:
         """Calculate garrison warnings for draft orders.
 
         Simulates order execution to detect stars that will be under-garrisoned
@@ -815,9 +811,7 @@ class AgentTools:
 
             current_garrison = star.stationed_ships.get(self.player_id, 0)
             ships_after = (
-                current_garrison
-                - ships_leaving[star.id]
-                + ships_arriving_immediate[star.id]
+                current_garrison - ships_leaving[star.id] + ships_arriving_immediate[star.id]
             )
 
             if ships_after < star.base_ru:
@@ -838,7 +832,91 @@ class AgentTools:
 
         return warnings
 
-    def submit_orders(self, orders: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _calculate_fleet_splitting_warnings(
+        self, draft_orders: list[dict[str, Any]]
+    ) -> list[FleetSplittingWarning]:
+        """Calculate fleet splitting warnings for draft orders.
+
+        Detects when multiple fleets are sent to the same destination on the same turn,
+        which is inefficient due to combat mechanics (concentrated fleets win with fewer losses).
+
+        Args:
+            draft_orders: List of order dicts with "from", "to", "ships" keys
+
+        Returns:
+            List of FleetSplittingWarning objects for inefficient splits
+        """
+        from collections import defaultdict
+
+        warnings = []
+
+        # Build map of fleets by destination
+        fleets_by_dest: dict[str, list[dict]] = defaultdict(list)
+
+        for order_dict in draft_orders:
+            # Skip invalid orders (they'll be caught by validation)
+            if "from" not in order_dict or "to" not in order_dict or "ships" not in order_dict:
+                continue
+
+            try:
+                from_star = self._resolve_star_id(str(order_dict["from"]))
+                to_star = self._resolve_star_id(str(order_dict["to"]))
+                ships = order_dict["ships"]
+            except (ValueError, KeyError):
+                # Skip invalid orders
+                continue
+
+            if not isinstance(ships, int) or ships <= 0:
+                continue
+
+            # Find origin star name
+            from_star_name = None
+            for star in self.game.stars:
+                if star.id == from_star:
+                    from_star_name = star.name
+                    break
+
+            fleets_by_dest[to_star].append(
+                {"from": from_star, "from_name": from_star_name, "ships": ships}
+            )
+
+        # Check for multiple fleets to same destination
+        for dest_star_id, fleets in fleets_by_dest.items():
+            if len(fleets) > 1:
+                # Find destination star name
+                dest_star_name = None
+                for star in self.game.stars:
+                    if star.id == dest_star_id:
+                        dest_star_name = star.name
+                        break
+
+                total_ships = sum(f["ships"] for f in fleets)
+
+                # Format fleet descriptions
+                fleet_descriptions = [
+                    f"{f['from']} ({f['from_name']}): {f['ships']} ships" for f in fleets
+                ]
+
+                message = (
+                    f"Multiple fleets targeting {dest_star_name} ({dest_star_id}) on same turn. "
+                    f"Consider combining into single fleet for combat efficiency. "
+                    f"Fleets: {'; '.join(fleet_descriptions)}. "
+                    f"Total: {total_ships} ships."
+                )
+
+                warnings.append(
+                    FleetSplittingWarning(
+                        destination=dest_star_id,
+                        destination_name=dest_star_name or dest_star_id,
+                        fleets=fleets,
+                        total_ships=total_ships,
+                        message=message,
+                    )
+                )
+
+        return warnings
+
+    def submit_orders(self, orders: list[dict[str, Any]]) -> dict[str, Any]:
         """Submit validated orders for this turn.
 
         This is the only mutating tool. Orders are committed and will
@@ -870,9 +948,301 @@ class AgentTools:
             "turn": self.game.turn,
         }
 
-    def memory_query(
-        self, table: str, filter_dict: Optional[Dict] = None
-    ) -> List[Dict]:
+    def simulate_combat(self, attacker_ships: int, defender_ships: int) -> dict[str, Any]:
+        """Simulate combat outcome using exact game combat rules.
+
+        Uses the same deterministic combat resolution as the game engine:
+        - (N+1) attackers beats N defenders
+        - Winner loses ceil(loser/2) ships
+        - Equal forces result in mutual destruction (tie)
+
+        This tool provides EXACT combat outcomes - never guess or estimate combat results.
+
+        Args:
+            attacker_ships: Number of attacking ships (must be > 0)
+            defender_ships: Number of defending ships (can be 0)
+
+        Returns:
+            Dictionary with winner, survivors, losses, and outcome summary
+        """
+        # Use the game's actual combat resolution logic
+        result = resolve_combat(attacker_ships, defender_ships)
+
+        # Generate human-readable summary
+        if result.winner == "attacker":
+            summary = (
+                f"Attacker wins with {result.attacker_survivors} ships remaining. "
+                f"Losses: Attacker {result.attacker_losses}, Defender {result.defender_losses}."
+            )
+        elif result.winner == "defender":
+            summary = (
+                f"Defender wins with {result.defender_survivors} ships remaining. "
+                f"Losses: Attacker {result.attacker_losses}, Defender {result.defender_losses}."
+            )
+        else:
+            summary = "Tie - mutual destruction. Both forces eliminated."
+
+        return CombatSimulationOutput(
+            winner=result.winner,
+            attacker_survivors=result.attacker_survivors,
+            defender_survivors=result.defender_survivors,
+            attacker_losses=result.attacker_losses,
+            defender_losses=result.defender_losses,
+            outcome_summary=summary,
+        ).model_dump()
+
+    def calculate_force_requirements(
+        self, defender_ships: int, desired_survivors: int
+    ) -> dict[str, Any]:
+        """Calculate exact force requirements to win combat with desired survivors.
+
+        Uses game's deterministic combat rules to calculate:
+        - Minimum force needed to win (N+1 where N = defenders)
+        - Recommended force to achieve desired survivor count
+        - Expected casualties and survivors
+
+        Args:
+            defender_ships: Number of defending ships
+            desired_survivors: Minimum survivors you want after combat (0 = just win)
+
+        Returns:
+            Dictionary with force requirements and detailed explanation
+        """
+        # Minimum to win: N+1 attackers beats N defenders
+        minimum_attackers = defender_ships + 1
+
+        # If no survivors desired, minimum is sufficient
+        if desired_survivors == 0:
+            result = resolve_combat(minimum_attackers, defender_ships)
+            explanation = (
+                f"To defeat {defender_ships} defenders, you need minimum {minimum_attackers} attackers. "
+                f"With minimum force, you'll lose {result.attacker_losses} ships and have "
+                f"{result.attacker_survivors} survivors."
+            )
+            return ForceRequirementsOutput(
+                minimum_attackers=minimum_attackers,
+                recommended_force=minimum_attackers,
+                expected_losses=result.attacker_losses,
+                expected_survivors=result.attacker_survivors,
+                overkill_amount=0,
+                explanation=explanation,
+            ).model_dump()
+
+        # Calculate force needed to achieve desired survivors
+        # Working backwards: if we want S survivors and lose ceil(D/2), need S + ceil(D/2) attackers
+        import math
+
+        losses_expected = math.ceil(defender_ships / 2)
+        recommended_force = desired_survivors + losses_expected
+
+        # Verify this achieves the goal
+        result = resolve_combat(recommended_force, defender_ships)
+
+        # If not enough, increase force (shouldn't happen with correct math, but safety check)
+        while result.attacker_survivors < desired_survivors and recommended_force < 1000:
+            recommended_force += 1
+            result = resolve_combat(recommended_force, defender_ships)
+
+        overkill = recommended_force - minimum_attackers
+
+        explanation = (
+            f"To defeat {defender_ships} defenders with at least {desired_survivors} survivors:\n"
+            f"- Minimum to win: {minimum_attackers} attackers\n"
+            f"- Recommended force: {recommended_force} attackers\n"
+            f"- Expected losses: {result.attacker_losses} ships\n"
+            f"- Expected survivors: {result.attacker_survivors} ships\n"
+            f"- Safety margin: +{overkill} ships above minimum"
+        )
+
+        return ForceRequirementsOutput(
+            minimum_attackers=minimum_attackers,
+            recommended_force=recommended_force,
+            expected_losses=result.attacker_losses,
+            expected_survivors=result.attacker_survivors,
+            overkill_amount=overkill,
+            explanation=explanation,
+        ).model_dump()
+
+    def analyze_threat_landscape(self, target_star: str) -> dict[str, Any]:
+        """Comprehensive threat analysis for a target star.
+
+        Analyzes tactical situation around target including:
+        - Current ownership and known defenders (respects fog-of-war)
+        - Distance from home and hyperspace risk
+        - Nearby enemy stars (potential threats within 3 parsecs)
+        - Nearby friendly stars (potential reinforcement sources)
+        - Threat level assessment
+        - Recommended attack force
+        - Strategic value assessment
+
+        Args:
+            target_star: Star ID to analyze (e.g., 'A', 'P')
+
+        Returns:
+            Dictionary with comprehensive threat analysis
+        """
+        # Resolve star reference
+        target_id = self._resolve_star_id(target_star)
+
+        # Find target star
+        target = None
+        for s in self.game.stars:
+            if s.id == target_id:
+                target = s
+                break
+
+        if target is None:
+            raise ValueError(f"Invalid star reference: {target_star}")
+
+        # Get home star for distance calculations
+        home_star = None
+        for s in self.game.stars:
+            if s.id == self.player.home_star:
+                home_star = s
+                break
+
+        distance_from_home = chebyshev_distance(target.x, target.y, home_star.x, home_star.y)
+
+        # Calculate hyperspace risk
+        hyperspace_risk = 1.0 - ((1.0 - HYPERSPACE_LOSS_PROB) ** distance_from_home)
+
+        # Determine ownership and defenders (fog-of-war aware)
+        visited = target_id in self.player.visited_stars
+
+        current_owner = None
+        known_defenders = None
+        estimated_npc_defenders = None
+
+        if visited:
+            # We can see ownership
+            if target.owner == self.player_id:
+                current_owner = "me"
+                known_defenders = target.stationed_ships.get(self.player_id, 0)
+            elif target.owner == self.opponent_id:
+                current_owner = "opp"
+                # Enemy garrison hidden by fog-of-war
+                known_defenders = None
+            elif target.owner is None and target.npc_ships > 0:
+                current_owner = "npc"
+                # NPC defenders equal to RU
+                estimated_npc_defenders = target.base_ru
+                known_defenders = target.npc_ships
+            else:
+                current_owner = None  # Uncontrolled
+                known_defenders = 0
+
+        # Find nearby enemy stars (within 3 parsecs)
+        nearby_enemy_stars = []
+        for star in self.game.stars:
+            if star.owner == self.opponent_id:
+                dist = chebyshev_distance(target.x, target.y, star.x, star.y)
+                if dist <= 3:
+                    nearby_enemy_stars.append(
+                        {
+                            "star_id": star.id,
+                            "star_name": star.name,
+                            "distance": dist,
+                            "known_ru": star.base_ru
+                            if star.id in self.player.visited_stars
+                            else None,
+                        }
+                    )
+
+        # Find nearby friendly stars (within 3 parsecs)
+        nearby_my_stars = []
+        for star in self.game.stars:
+            if star.owner == self.player_id:
+                dist = chebyshev_distance(target.x, target.y, star.x, star.y)
+                if dist <= 3:
+                    nearby_my_stars.append(
+                        {
+                            "star_id": star.id,
+                            "star_name": star.name,
+                            "distance": dist,
+                            "stationed_ships": star.stationed_ships.get(self.player_id, 0),
+                            "ru": star.base_ru,
+                        }
+                    )
+
+        # Assess threat level
+        if len(nearby_enemy_stars) == 0:
+            threat_level = "low"
+        elif len(nearby_enemy_stars) == 1:
+            threat_level = "medium"
+        elif len(nearby_enemy_stars) >= 2:
+            threat_level = "high"
+        else:
+            threat_level = "low"
+
+        # If very close to home, escalate threat
+        if distance_from_home <= 2 and current_owner == "opp":
+            threat_level = "critical"
+
+        # Calculate recommended force (if we know defender count)
+        recommended_force = None
+        if known_defenders is not None:
+            # Use minimum + small buffer for safety
+            recommended_force = known_defenders + 2
+        elif estimated_npc_defenders is not None:
+            recommended_force = estimated_npc_defenders + 2
+
+        # Strategic value assessment
+        if not visited:
+            strategic_value = (
+                "Unknown - star not yet visited. Send scout to reveal RU and ownership."
+            )
+        elif target.base_ru >= 3:
+            strategic_value = (
+                f"High value target: {target.base_ru} RU production. Priority capture."
+            )
+        elif target.base_ru == 2:
+            strategic_value = f"Medium value: {target.base_ru} RU production. Useful expansion."
+        else:
+            strategic_value = f"Low value: {target.base_ru} RU production. Low priority unless strategic position."
+
+        # Generate warnings
+        warnings = []
+
+        if not visited:
+            warnings.append(
+                "FOG-OF-WAR: Star not visited - ownership and defenders unknown. Send scout first."
+            )
+
+        if current_owner == "opp" and known_defenders is None:
+            warnings.append(
+                "FOG-OF-WAR: Enemy garrison size unknown. Recommend using combat history or sending small scout to trigger combat report."
+            )
+
+        if len(nearby_enemy_stars) >= 2:
+            warnings.append(
+                f"THREAT: {len(nearby_enemy_stars)} enemy stars within 3 parsecs. Risk of enemy reinforcements."
+            )
+
+        if hyperspace_risk > 0.1:
+            warnings.append(
+                f"HYPERSPACE RISK: {hyperspace_risk:.1%} chance of fleet loss in transit (distance {distance_from_home})."
+            )
+
+        if current_owner == "me":
+            warnings.append("FRIENDLY STAR: This is your star. No attack needed.")
+
+        return ThreatAnalysisOutput(
+            target_star_id=target_id,
+            target_star_name=target.name,
+            current_owner=current_owner,
+            known_defenders=known_defenders,
+            estimated_npc_defenders=estimated_npc_defenders,
+            distance_from_home=distance_from_home,
+            hyperspace_risk=round(hyperspace_risk, 4),
+            nearby_enemy_stars=nearby_enemy_stars,
+            nearby_my_stars=nearby_my_stars,
+            threat_level=threat_level,
+            recommended_force=recommended_force,
+            strategic_value=strategic_value,
+            warnings=warnings,
+        ).model_dump()
+
+    def memory_query(self, table: str, filter_dict: dict | None = None) -> list[dict]:
         """Query agent memory.
 
         Retrieves records from the specified memory table with optional filtering.
@@ -903,13 +1273,10 @@ class AgentTools:
             if matches:
                 filtered.append(record)
 
-        logger.info(
-            f"Memory query returned {len(filtered)} filtered records from {table}"
-        )
+        logger.info(f"Memory query returned {len(filtered)} filtered records from {table}")
         return filtered
 
-
-    def get_pending_orders(self) -> Optional[List[Order]]:
+    def get_pending_orders(self) -> list[Order] | None:
         """Get the pending validated orders.
 
         Returns:
@@ -917,9 +1284,7 @@ class AgentTools:
         """
         return self.pending_orders
 
-    def execute_tool(
-        self, tool_name: str, tool_input: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def execute_tool(self, tool_name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
         """Execute a tool with Pydantic validation.
 
         This is the unified entry point for all tool execution. It:
@@ -965,9 +1330,7 @@ class AgentTools:
                 result = self.query_star(validated_input.star_ref)
 
             elif tool_name == "estimate_route":
-                result = self.estimate_route(
-                    validated_input.from_star, validated_input.to_star
-                )
+                result = self.estimate_route(validated_input.from_star, validated_input.to_star)
 
             elif tool_name == "propose_orders":
                 # Convert OrderModel list to dict list for internal method
@@ -980,16 +1343,26 @@ class AgentTools:
             elif tool_name == "submit_orders":
                 # Convert OrderModel list to dict list for internal method
                 orders_dict = [
-                    {"from": o.from_, "to": o.to, "ships": o.ships}
-                    for o in validated_input.orders
+                    {"from": o.from_, "to": o.to, "ships": o.ships} for o in validated_input.orders
                 ]
                 result = self.submit_orders(orders_dict)
 
             elif tool_name == "memory_query":
-                records = self.memory_query(
-                    validated_input.table, validated_input.filter_dict
-                )
+                records = self.memory_query(validated_input.table, validated_input.filter_dict)
                 result = {"records": records}
+
+            elif tool_name == "simulate_combat":
+                result = self.simulate_combat(
+                    validated_input.attacker_ships, validated_input.defender_ships
+                )
+
+            elif tool_name == "calculate_force_requirements":
+                result = self.calculate_force_requirements(
+                    validated_input.defender_ships, validated_input.desired_survivors
+                )
+
+            elif tool_name == "analyze_threat_landscape":
+                result = self.analyze_threat_landscape(validated_input.target_star)
 
             else:
                 raise ValueError(f"Tool handler not implemented: {tool_name}")
@@ -1056,8 +1429,7 @@ class AgentTools:
 
         # Check if this battle already recorded (avoid duplicates)
         existing = any(
-            r.get("turn") == turn and r.get("star") == star_id
-            for r in self.memory["battle_log"]
+            r.get("turn") == turn and r.get("star") == star_id for r in self.memory["battle_log"]
         )
 
         if not existing:
@@ -1070,9 +1442,7 @@ class AgentTools:
             if winner_role is None:
                 winner = "draw"
             else:
-                winner_entity = (
-                    attacker_id if winner_role == "attacker" else defender_id
-                )
+                winner_entity = attacker_id if winner_role == "attacker" else defender_id
                 winner = transform_player(winner_entity)
 
             self.memory["battle_log"].append(
@@ -1090,9 +1460,7 @@ class AgentTools:
                 }
             )
 
-            logger.info(
-                f"Recorded PvP battle at {star_id} (turn {turn}): {winner} won"
-            )
+            logger.info(f"Recorded PvP battle at {star_id} (turn {turn}): {winner} won")
 
     def _add_discovery_record(self, turn: int, star) -> None:
         """Add discovery record for newly visited stars.
@@ -1104,9 +1472,7 @@ class AgentTools:
         star_id = star.id
 
         # Check if already recorded
-        existing = any(
-            r.get("star") == star_id for r in self.memory["discovery_log"]
-        )
+        existing = any(r.get("star") == star_id for r in self.memory["discovery_log"])
 
         if not existing:
             # Transform owner perspective

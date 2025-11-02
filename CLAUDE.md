@@ -1,0 +1,1 @@
+- Always use uv for package management and for running any programs or tests.

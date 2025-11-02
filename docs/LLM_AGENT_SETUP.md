@@ -1,29 +1,33 @@
 # LLM Agent Setup Guide
 
-This guide explains how to set up and use the LLM-powered AI opponent in Space Conquest. The agent uses Claude via AWS Bedrock to play strategically against human players.
+This guide explains how to set up and use the LLM-powered AI opponent in Space Conquest. The agent supports multiple LLM providers (AWS Bedrock, OpenAI, Anthropic API, Ollama) via LangChain to play strategically against human players.
 
 ## Overview
 
 The LLM agent implementation consists of:
 
-- **Agent Tools** (`src/agent/tools.py`) - 8 tools for observing game state and submitting orders
-- **Bedrock Client** (`src/agent/bedrock_client.py`) - AWS Bedrock API wrapper with function calling
+- **Agent Tools** (`src/agent/tools.py`) - 7 tools for observing game state and submitting orders
+- **LangChain Client** (`src/agent/langchain_client.py`) - Unified multi-provider LLM client with prompt caching support
 - **LLM Player** (`src/agent/llm_player.py`) - Player controller that orchestrates tool use
 - **System Prompt** (`src/agent/prompts.py`) - Strategic decision-making framework
+
+**Supported Providers:**
+- AWS Bedrock (Claude models) - Supports prompt caching
+- Anthropic API (Claude models) - Supports prompt caching
+- OpenAI (GPT-4, GPT-4o, etc.)
+- Ollama (Local models)
 
 ## Prerequisites
 
 ### 1. Install Dependencies
 
-```bash
-pip install boto3
-```
-
-Or if using the requirements file:
+The project uses `uv` for dependency management:
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
+
+This installs LangChain and all required provider packages.
 
 ### 2. AWS Account Setup
 
@@ -212,6 +216,58 @@ Tips to reduce costs:
 - Use mock mode for development/testing
 - Set conservative turn limits
 - Use Claude 3 Haiku (cheaper) if available
+- **Use Anthropic or Bedrock with prompt caching (see below)**
+
+### Prompt Caching (Anthropic/Bedrock Only)
+
+**Automatic token savings of 85-90% on cached content!**
+
+As of the latest update, the LangChain client automatically enables prompt caching for Anthropic and Bedrock providers. This dramatically reduces token usage within a single turn's reasoning loop.
+
+#### How It Works
+
+1. **First LLM call in a turn**: System prompt + tools written to cache (~1500 tokens)
+2. **Subsequent calls (iterations 2-15)**: Cached content read instead of re-sent (~0 tokens, 90% cheaper)
+3. **Cache lifetime**: ~5 minutes (sufficient for entire turn)
+
+#### Expected Savings
+
+Without caching (typical turn with 8 LLM calls):
+- System prompt: 1500 tokens × 8 = **12,000 tokens**
+- Tool definitions: 500 tokens × 8 = **4,000 tokens**
+- Game state responses: ~10,000 tokens
+- **Total: ~26,000 input tokens per turn**
+
+With caching:
+- First call: 2000 tokens (system + tools cached)
+- Calls 2-8: 200 tokens each (cache hits) = 1,400 tokens
+- Game state responses: ~10,000 tokens
+- **Total: ~13,400 input tokens per turn**
+- **Savings: ~12,600 tokens per turn (48% reduction)**
+
+Over a 20-turn game:
+- **Without caching**: ~520,000 input tokens = **$1.56**
+- **With caching**: ~268,000 input tokens = **$0.80**
+- **You save: ~$0.76 per game (49% cost reduction)**
+
+#### Monitoring Cache Usage
+
+Cache hits/misses are automatically logged:
+
+```
+INFO: Cache HIT: 1847 tokens read from cache (saved ~90% cost)
+INFO: Cache MISS: 1847 tokens written to cache
+DEBUG: Token usage - Input: 412, Cache read: 1847, Cache write: 0
+```
+
+#### Provider Support
+
+- ✅ **Anthropic API** (claude-3-5-sonnet, haiku) - Full support
+- ✅ **AWS Bedrock** (Claude models) - Full support
+- ❌ **OpenAI** - Not supported (no native caching)
+- ❌ **Ollama** - Not supported (local models)
+
+**Recommendation**: Use `--provider anthropic` or `--provider bedrock` for maximum cost savings.
 
 ## Troubleshooting
 

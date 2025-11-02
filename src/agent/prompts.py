@@ -5,125 +5,74 @@ Based on the LLM Player 2 Agent specification.
 """
 
 SYSTEM_PROMPT_BASE = """You are Player 2 in Space Conquest, a turn-based 4X strategy game.
+Your objective is to capture Player 1's Home Star.
 
-OBJECTIVE: Win by capturing Player 1's Home Star.
+CORE RULES (IMMUTABLE):
+- Production: Each star you control automatically produces ships each turn equal to its RU (Home=4 RU; NPC=1–3 RU). Production is automatic - no garrison required.
+- Ships move on an 8-direction grid (Chebyshev metric). Diagonals cost the same as orthogonal.
+- Hyperspace risk: each turn of travel has a 2% chance of destroying the entire fleet (binary outcome).
+- Combat: (N+1) attackers beats N defenders. Attacker loses ceil(N/2), winner takes the star.
+- NPC stars start with defenders equal to RU (1 RU = 1 defender, 2 RU = 2 defenders, 3 RU = 3 defenders).
+- Combat is simultaneous: fleets arriving on the same turn fight that turn.
+- Rebellion: ONLY captured NPC stars with garrison < RU risk rebellion (50% chance each turn). To prevent rebellion, keep garrison >= RU (1 RU star needs 1+ ships, 2 RU needs 2+, 3 RU needs 3+). Home stars NEVER rebel.
+- You win by capturing the opponent's home star.
+- Fog-of-war: you only know RU for stars you control/captured; unknown stars may show known_ru: null. Never invent hidden info.
 
-GAME RULES:
-- Stars produce ships each turn equal to their RU (Resource Units)
-- Home stars have 4 RU, NPC stars have 1-3 RU
-- Ships move through hyperspace with 2% loss probability per turn of travel
-- Ships move in 8 directions (diagonal costs same as orthogonal) - ALWAYS use estimate_route() tool to calculate accurate distances
-- Captured NPC stars need garrison >= RU to prevent 50% rebellion chance
-- Combat is simultaneous: if fleets arrive at same turn, both sides fight
-- You win by capturing the opponent's home star
+TURN EXECUTION PHASES:
+1. Fleet movement
+2. Combat
+3. Rebellion check (50% risk if garrison < RU on captured NPC stars)
+4. Victory check
+5. Submit orders (players send fleets)
+6. Production (controlled stars produce new ships = star's RU)
 
-AVAILABLE TOOLS:
-1. get_observation() - Get current game state with fog-of-war. Stars are SORTED BY DISTANCE from your home (closest first), and each star includes a distance_from_home field showing exact Chebyshev distance.
-2. get_ascii_map() - See the map visualization
-3. query_star(star_ref) - Get details about a specific star
-4. estimate_route(from, to) - Calculate distance between ANY two stars (not just from home)
-5. propose_orders(draft_orders) - Validate orders before submitting
-6. submit_orders(orders) - Commit your moves (only once per turn!)
-7. memory_query(table, filter) - Query auto-populated battle/discovery history
+TOOLS (HOW TO USE):
+- Always call get_observation() at the start of your turn to get the current state under fog-of-war. The returned stars list is sorted by distance_from_home ascending. Use that field for proximity.
+- CRITICAL: ALWAYS use simulate_combat(attacker_ships, defender_ships) before planning ANY attack. Combat is deterministic - never guess outcomes.
+- Use calculate_force_requirements(defenders, desired_survivors) to determine exact force needed for attacks.
+- Use analyze_threat_landscape(target_star) for comprehensive threat analysis including nearby enemies and recommended force.
+- Use query_star(ref) if you need details on a particular star.
+- Use propose_orders(draft) to validate before committing.
+- Use submit_orders(orders) at most once per turn after validation.
+- Use memory_query(table, filter) for battle/discovery history to size re-attacks.
 
-**IMPORTANT: Stars in get_observation() are sorted by distance_from_home (closest first). Use the distance_from_home field to identify nearby targets - the first stars in the list are your closest neighbors!**
+MANDATORY COMBAT VERIFICATION:
+Before submitting any attack order, you MUST:
+1. Use simulate_combat() to verify the attack will succeed
+2. Confirm expected survivors are acceptable
+3. Never guess or estimate combat outcomes - always simulate
 
-DECISION PROCESS:
-1. Call get_observation() to see current state (stars are pre-sorted by distance_from_home)
-2. Identify nearby targets by looking at stars with low distance_from_home values (they appear first in the list)
-3. Analyze expansion targets and defense needs based on distances
-4. Compute moves that maximize near-term production while protecting against:
-   - Rebellions (keep garrison >= RU at captured NPC stars)
-   - Home star rushes (maintain home defense)
-   - Hyperspace losses (prefer shorter routes - lower distance values)
-5. Use propose_orders() to validate; fix errors if needed
-6. Submit with submit_orders() - IMPORTANT: Can only call once!
+If you submit attack orders without simulating combat first, you are making a critical strategic error.
 
-CONSTRAINTS:
-- Do NOT exceed available ships at any origin
-- Keep garrisons >= RU where possible to prevent rebellions
-- Minimize hyperspace losses using distance thresholds (see STRATEGIC GUIDANCE)
-- If simultaneous home-star trades are likely, prioritize defending home
-- RESPECT FOG-OF-WAR: Do not invent unknown RU or opponent positions
-- Orders format: [{"from": "A", "to": "B", "ships": 3}, ...]
+OUTPUT / ACTION CONTRACT:
+Respond with one of:
+1. A tool call (when you need info or to validate/submit).
+2. Final orders JSON only, in the form:
+   {"turn": <int>, "moves": [{"from":"A","to":"B","ships":3}, ...], "strategy_notes": "<short note>"}
 
-STRATEGIC GUIDANCE:
-# Condensed from docs/llm_strategy_guide.md - keep both files synchronized
+Never exceed available ships at the origin.
+Keep garrisons ≥ RU on captured NPC stars to prevent rebellions (home stars never rebel, so you can send all ships from home).
+Respect fog-of-war; do not fabricate RU or enemy positions.
+If you choose to pass, send {"turn": <int>, "moves": []}.
 
-Opening (Turns 1-5):
-- Turn 1 PRIORITY: Look at stars array from get_observation() - it's SORTED by distance_from_home (closest first). Target stars with distance_from_home 1-4. Adjacent stars (distance 1) are BEST - they appear near the top of the list after your home star. Do NOT waste ships on scouting. Discover RU on capture. Opponent is far away (8-12 parsecs).
-- **QUICK START**: The first 3-5 non-home stars in the observation are your nearest neighbors - prioritize conquering them immediately
-- Turns 2-3: Expand to nearby high-RU stars as production allows
-- Expansion fleets (vs FULL NPC garrison): 1 RU star=3 ships, 2 RU star=4 ships, 3 RU star=5-6 ships
-- Prioritize high-RU stars within distance 1-5 (prefer closer - check distance_from_home field)
-- Formula: (N+1) ships beats N defenders, lose ceil(N/2), need N for garrison. For 3 RU: 4 beats 3, lose 2, need 3 garrison = 5-6 ships total.
+EARLY GAME STRATEGY:
+Early game (T1-5): Send all ships from home to capture nearby stars. Home is safe - opponent is 8+ parsecs away, doesn't know your location, and faces high hyperspace risk.
 
-NPC Garrison Depletion:
-- **NPC defenders do NOT regenerate after combat** unless rebellion occurs
-- After failed attack: NPC garrison reduced by ceil(your_losses/2)
-- Example: 3 RU star, you sent 4 ships, mutual destruction → Star now has 0 defenders
-- Re-conquest: Send right-sized fleet based on remaining defenders (track combat history)
-- Rebellion resets garrison to full RU value if rebels win
+FLEET CONCENTRATION (CRITICAL):
+Combat is winner-take-all deterministic. Always send fleets as single concentrated forces:
+- One 10-ship fleet beats 5 defenders, loses 3 ships (ceil(5/2)), nets 7 survivors.
+- Two 5-ship fleets arriving separately: first fleet (5 vs 5) ties with mutual destruction, second fleet captures with 5 survivors (less efficient).
+- RULE: When attacking the same star on the same turn, send ONE combined fleet, not multiple small fleets.
+- Exception: Send multiple fleets only if they target DIFFERENT stars or arrive on DIFFERENT turns.
 
-Distance Thresholds (2% FLEET loss per turn, ALL-OR-NOTHING):
-- Early game (Turns 1-5): Distance ≤4 conquer ALL nearby stars (any RU)
-- Mid/Late game: Distance ≤3 any star, 4-5 only RU≥2, 6-8 only RU=3
-- Distance >8: Home star assaults only (15-20% chance total fleet loss)
-- IMPORTANT: Hyperspace loss is binary - entire fleet destroyed OR arrives intact
+TURN LOOP (CONCISE):
+1. get_observation() → inspect stars (nearby first via distance_from_home).
+2. Prefer shorter routes to reduce hyperspace loss.
+3. Maintain garrisons on captured NPC stars.
+4. estimate_route() as needed; propose_orders(); fix any errors.
+5. submit_orders() once.
 
-Garrison Rules (Prevent 50% Rebellion Risk):
-- Always maintain garrison ≥ RU on captured stars
-- Exception: Only accept rebellion risk on 1 RU stars under extreme pressure
-- Never risk rebellion on 3 RU stars (too valuable)
-- Rebellion cost >> garrison cost: maintain garrisons religiously
-
-Mid-Game (Turns 6-12):
-- 8+ RU total: Expand AND prepare offense
-- 6-7 RU: Deny opponent expansion (race for key stars)
-- ≤5 RU: Defensive, raid opponent expansions
-- Fleet concentration: One 10-ship fleet beats two 5-ship sequential arrivals
-- Production advantage compounds: +2 RU/turn = +10 ships after 5 turns
-
-Endgame (Turns 13-20):
-- Home star assault fleet: 15-20 ships recommended
-- Stage at forward star 3-4 distance from enemy home
-- Maintain 8+ ships home defense if opponent can reach in 3 turns
-- Never drop below 4 ships at home (minimum defense)
-- Simultaneous home-star trades = draw: defend while attacking
-
-Common Pitfalls to Avoid:
-- Over-expansion without garrisons (leads to rebellions, production collapse)
-- Under-defending home star (instant loss to raids)
-- Early scouting (Turns 1-3: conquer nearby stars, don't scout. Scout mid-game for distant targets only)
-- Sequential fleet arrivals (get defeated piecemeal by concentrated defense)
-- Ignoring hyperspace losses (add 15-20% buffer for distance 8+ routes)
-- Sending full fleets to weakened NPC stars (track combat history, right-size re-attacks)
-
-FOG-OF-WAR:
-- You only know RU values for stars you control or have captured
-- Unknown stars show known_ru: null - treat as approximately 2 RU
-- You don't see opponent fleets unless you fought them
-- last_seen_control shows when you last observed each star
-
-EXAMPLE ORDERS:
-{
-  "turn": 5,
-  "moves": [
-    {"from": "P", "to": "F", "ships": 3},
-    {"from": "P", "to": "L", "ships": 1}
-  ],
-  "strategy_notes": "Expanding to F (2 RU), keeping 4 at home for defense"
-}
-
-IMPORTANT REMINDERS:
-- Always validate with propose_orders() before submit_orders()
-- You can only call submit_orders() ONCE per turn
-- Empty moves list is valid (pass turn)
-- Query memory_query for battle history and star discovery data
-- Track NPC garrison depletion: Don't waste ships re-attacking weakened stars with full fleets
-- Be aggressive but not reckless - survival is key
-
-Begin by calling get_observation() to see the current state."""
+Begin by calling get_observation()."""
 
 # Additional instructions for verbose mode (--debug flag)
 VERBOSE_REASONING_INSTRUCTIONS = """
@@ -135,18 +84,95 @@ After analyzing data, explain your strategic assessment before taking action.
 This helps track your decision-making process."""
 
 
-def get_system_prompt(verbose: bool = False) -> str:
-    """Get the system prompt, optionally with verbose reasoning instructions.
+def get_system_prompt(
+    verbose: bool = False,
+    game_phase: str | None = None,
+    threat_level: str | None = None,
+    turn: int | None = None,
+) -> str:
+    """Get the system prompt, dynamically adapted to game state.
+
+    The prompt is context-aware and adjusts based on:
+    - Game phase (early/mid/late game strategy emphasis)
+    - Threat level (defensive vs aggressive posture)
+    - Turn number (specific tactical considerations)
 
     Args:
         verbose: If True, include instructions to explain reasoning (uses more tokens)
+        game_phase: Current game phase ("early", "mid", "late")
+        threat_level: Current threat level ("low", "medium", "high", "critical")
+        turn: Current turn number
 
     Returns:
-        System prompt string
+        System prompt string adapted to current game context
     """
+    prompt = SYSTEM_PROMPT_BASE
+
+    # Add context-specific instructions
+    if game_phase or threat_level or turn:
+        prompt += "\n\nCURRENT SITUATION ANALYSIS:\n"
+
+        # Phase-specific guidance
+        if game_phase == "early":
+            prompt += (
+                "- EARLY GAME (T1-10): Aggressive expansion phase. Send all available ships from home "
+                "to capture nearby stars. Home is safe - opponent is distant and doesn't know your location. "
+                "Focus on rapid territorial growth over garrison maintenance.\n"
+            )
+        elif game_phase == "mid":
+            prompt += (
+                "- MID GAME (T11-30): Consolidation phase. Balance expansion with defense. "
+                "Maintain adequate garrisons on captured NPC stars (garrison >= RU). "
+                "Scout for enemy home star if not yet discovered. Prepare for conflict.\n"
+            )
+        elif game_phase == "late":
+            prompt += (
+                "- LATE GAME (T31+): Endgame phase. Focus on striking opponent's home star. "
+                "Concentrate forces for decisive attacks. Defend your home star with reserves. "
+                "Victory is near - execute your winning strategy.\n"
+            )
+
+        # Threat-specific guidance
+        if threat_level == "critical":
+            prompt += (
+                "- CRITICAL THREAT: Enemy forces detected within 2 parsecs of home! "
+                "IMMEDIATE ACTION REQUIRED:\n"
+                "  1. Calculate exact enemy strike capability from nearby stars\n"
+                "  2. Ensure home garrison > enemy potential attack force\n"
+                "  3. Pull back fleets to defend home if necessary\n"
+                "  4. Consider pre-emptive strikes on enemy staging bases\n"
+            )
+        elif threat_level == "high":
+            prompt += (
+                "- HIGH THREAT: Enemy stars detected 3-4 parsecs from home. "
+                "Increase home defenses. Monitor enemy fleet movements via combat reports. "
+                "Prepare counter-offensive while maintaining defensive reserves.\n"
+            )
+        elif threat_level == "medium":
+            prompt += (
+                "- MEDIUM THREAT: Enemy presence known but distant (5-6 parsecs). "
+                "Continue expansion but establish defensive perimeter. "
+                "Create forward bases for staging eventual offensive.\n"
+            )
+        elif threat_level == "low":
+            prompt += (
+                "- LOW THREAT: Enemy distant or unknown (7+ parsecs). "
+                "Focus on aggressive expansion and resource acquisition. "
+                "Scout toward likely enemy locations.\n"
+            )
+
+        # Turn-specific guidance
+        if turn == 1:
+            prompt += (
+                "\n- TURN 1 SPECIAL: This is your first move. Send scouts from home to nearby stars "
+                "to reveal the map. No memory_query available yet (no history). "
+                "Focus on discovering high-RU stars within 3-4 parsecs.\n"
+            )
+
     if verbose:
-        return SYSTEM_PROMPT_BASE + VERBOSE_REASONING_INSTRUCTIONS
-    return SYSTEM_PROMPT_BASE
+        prompt += VERBOSE_REASONING_INSTRUCTIONS
+
+    return prompt
 
 
 # Legacy export for backward compatibility
@@ -186,10 +212,21 @@ DECISION_TEMPLATE = """Based on the observation, make your decision following th
    - Strike opponent's home?
    - Scout unknown stars?
 
-4. PLAN MOVES
+   Strategic Pathway Assessment:
+   - If opponent home star location KNOWN: Prioritize stars that establish path toward it
+   - Create "stepping stone" bases at distance 3-5 intervals for staging
+   - Avoid scattering forces across unconnected star clusters
+   - Focus expansion: Better to own 5 stars in a chain than 5 isolated stars
+
+4. PLAN MOVES AND VERIFY COMBAT OUTCOMES
    - From which stars can I send ships?
    - To which destinations should they go?
-   - How many ships to send (balance offense/defense)?
+   - CRITICAL: For each attack, use simulate_combat() to verify:
+     * Attack will succeed (attacker_survivors > 0)
+     * Expected losses are acceptable
+     * Survivors sufficient for holding the star
+   - Use calculate_force_requirements() if you need exact force for desired outcome
+   - Use analyze_threat_landscape() to assess tactical situation and nearby threats
    - Check hyperspace risk for long routes
 
 5. VALIDATE & SUBMIT

@@ -8,14 +8,13 @@ makes strategic decisions.
 
 import json
 import logging
-from typing import List
 
 from ..models.game import Game
 from ..models.order import Order
 from .langchain_client import LangChainClient, MockLangChainClient
 from .prompts import get_system_prompt
-from .tools import TOOL_DEFINITIONS, AgentTools
-
+from .tool_models import TOOL_DEFINITIONS
+from .tools import AgentTools
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +77,7 @@ class LLMPlayer:
         # Conversation history (for multi-turn context if needed)
         self.conversation_history = []
 
-    def get_orders(self, game: Game) -> List[Order]:
+    def get_orders(self, game: Game) -> list[Order]:
         """Get orders from LLM agent for this turn.
 
         Orchestrates the tool use loop:
@@ -130,9 +129,7 @@ class LLMPlayer:
                 logger.debug(f"Executed {len(tool_results)} tool(s)")
 
                 # Add assistant message with tool uses
-                messages.append(
-                    {"role": "assistant", "content": response["content_blocks"]}
-                )
+                messages.append({"role": "assistant", "content": response["content_blocks"]})
 
                 # Add tool results
                 tool_result_blocks = []
@@ -169,15 +166,11 @@ class LLMPlayer:
 
         logger.info(f"Returning {len(orders)} order(s)")
         for order in orders:
-            logger.debug(
-                f"  - {order.ships} ships: {order.from_star} -> {order.to_star}"
-            )
+            logger.debug(f"  - {order.ships} ships: {order.from_star} -> {order.to_star}")
 
         return orders
 
-    def _execute_tools(
-        self, content_blocks: List[dict], tools: AgentTools
-    ) -> List[dict]:
+    def _execute_tools(self, content_blocks: list[dict], tools: AgentTools) -> list[dict]:
         """Execute tool calls requested by Claude.
 
         Args:
@@ -195,7 +188,7 @@ class LLMPlayer:
                 text_content = block.get("text", "")
                 if text_content:
                     # Show provider name in logs
-                    provider_name = getattr(self.client, 'provider', 'LLM').upper()
+                    provider_name = getattr(self.client, "provider", "LLM").upper()
                     logger.info(f"[{provider_name}] {text_content}")
 
             elif block.get("type") == "tool_use":
@@ -221,9 +214,7 @@ class LLMPlayer:
                                 f"    Result: {result_content[:200]}{'...' if len(result_content) > 200 else ''}"
                             )
 
-                    results.append(
-                        {"tool_use_id": tool_use_id, "content": result_content}
-                    )
+                    results.append({"tool_use_id": tool_use_id, "content": result_content})
 
                 except Exception as e:
                     error_msg = f"Tool execution failed: {str(e)}"
