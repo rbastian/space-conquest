@@ -65,7 +65,7 @@ Total Fleet Strength             47                    70
 2. `/src/models/game.py` - Added `p2_model_id` field for display name generation
 3. `/game.py` - GameOrchestrator extracts model ID from LLMPlayer
 4. `/src/interface/display.py` - All display methods use admiral names
-5. `/src/agent/bedrock_client.py` - MockBedrockClient has model_id for testing
+5. `/src/agent/langchain_client.py` - MockLangChainClient has model_id and provider for testing
 
 ### Display Locations Updated:
 - Turn announcements

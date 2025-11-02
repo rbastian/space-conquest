@@ -1,10 +1,11 @@
-"""Phase 5: Rebellions and ship production.
+"""Phase 3b (Rebellions) and Phase 5 (Production).
 
-This module handles rebellions and production as two sequential sub-phases:
-1. Sub-Phase 5a - Rebellions: Check and resolve rebellions (50% chance if stationed < base_ru)
-2. Sub-Phase 5b - Production: Ship production at controlled stars (only for non-rebelling stars)
+This module handles rebellions and production as two separate functions:
+1. Phase 3b - process_rebellions: Check and resolve rebellions (50% chance if stationed < base_ru)
+2. Phase 5 - process_production: Ship production at controlled stars (only for non-rebelling stars)
 
-Key: Rebellions are checked BEFORE production to ensure new ships don't interfere with rebellion checks.
+Key: Rebellions are checked in Phase 3b (after combat, before victory check) so players
+see rebellion results BEFORE submitting orders. Production happens in Phase 5 (after orders).
 """
 
 from typing import List
@@ -31,8 +32,71 @@ def _is_home_star(game: Game, star: Star) -> bool:
     return star.id in home_stars
 
 
+def process_rebellions(game: Game) -> tuple[Game, List[RebellionEvent]]:
+    """Execute Phase 3b: Rebellions.
+
+    For each player-controlled star:
+       - If stationed_ships[owner] < base_ru: 50% rebellion chance (d6 roll of 4-6)
+       - On rebellion:
+         * Spawn base_ru rebel ships
+         * Resolve combat: stationed ships vs rebels
+         * If rebels win (or tie):
+           - star.owner = None (reverts to NPC)
+           - star.npc_ships = surviving_rebel_count
+         * If player wins:
+           - star.stationed_ships[owner] = surviving_player_count
+
+    Args:
+        game: Current game state
+
+    Returns:
+        Tuple of (updated game state, list of rebellion events)
+    """
+    rebellion_events = []
+
+    # Process rebellions for each controlled star
+    for star in game.stars:
+        event = _check_and_process_rebellion(game, star)
+        if event:
+            rebellion_events.append(event)
+
+    return game, rebellion_events
+
+
+def process_production(game: Game, rebelled_star_ids: set[str] | None = None) -> Game:
+    """Execute Phase 5: Production.
+
+    For controlled stars that did not rebel this turn:
+       - Home stars: +4 ships (always, immune to rebellion)
+       - Other stars: +base_ru ships
+
+    Args:
+        game: Current game state
+        rebelled_star_ids: Set of star IDs that rebelled this turn (no production for them).
+                          If None, no stars are excluded from production.
+
+    Returns:
+        Updated game state
+    """
+    if rebelled_star_ids is None:
+        rebelled_star_ids = set()
+
+    # Process production for non-rebelling stars
+    for star in game.stars:
+        if star.id not in rebelled_star_ids:
+            _process_star_production(game, star)
+
+    return game
+
+
 def process_rebellions_and_production(game: Game) -> tuple[Game, List[RebellionEvent]]:
-    """Execute Phase 5: Rebellions & Production.
+    """Execute Rebellions & Production together (legacy method for backward compatibility).
+
+    This method is kept for tests that expect the old behavior where rebellions
+    and production happen together in Phase 5.
+
+    For the main game loop, use process_rebellions() in Phase 3 and
+    process_production() in Phase 5 separately.
 
     Executes in two sequential sub-phases:
 
@@ -62,19 +126,16 @@ def process_rebellions_and_production(game: Game) -> tuple[Game, List[RebellionE
     """
     # Track which stars rebelled (no production for them)
     rebelled_stars = set()
-    rebellion_events = []
 
-    # Process rebellions for each controlled star
-    for star in game.stars:
-        event = _check_and_process_rebellion(game, star)
-        if event:
-            rebelled_stars.add(star.id)
-            rebellion_events.append(event)
+    # Process rebellions
+    game, rebellion_events = process_rebellions(game)
+
+    # Track which stars rebelled (no production for them)
+    for event in rebellion_events:
+        rebelled_stars.add(event.star)
 
     # Process production for non-rebelling stars
-    for star in game.stars:
-        if star.id not in rebelled_stars:
-            _process_star_production(game, star)
+    game = process_production(game, rebelled_stars)
 
     return game, rebellion_events
 

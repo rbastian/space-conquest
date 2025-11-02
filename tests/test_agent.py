@@ -1,10 +1,11 @@
 """Tests for LLM agent tools and player controller."""
 
 import pytest
+
 from src.agent.langchain_client import MockLangChainClient
-from src.agent.bedrock_client import MockBedrockClient
 from src.agent.llm_player import LLMPlayer
-from src.agent.tools import AgentTools, TOOL_DEFINITIONS
+from src.agent.tool_models import TOOL_DEFINITIONS
+from src.agent.tools import AgentTools
 from src.engine.map_generator import generate_map
 from src.models.order import Order
 
@@ -32,7 +33,6 @@ class TestAgentTools:
         assert "grid" in obs
         assert "stars" in obs
         assert "my_fleets" in obs
-        assert "rules" in obs
 
         assert obs["turn"] == game.turn
         assert obs["seed"] == game.seed
@@ -48,11 +48,6 @@ class TestAgentTools:
             assert "known_ru" in star_data
             assert "is_home" in star_data
             assert "stationed_ships" in star_data  # New field
-
-        # Check rules
-        assert obs["rules"]["hyperspace_loss"] == 0.02
-        assert obs["rules"]["rebellion_chance"] == 0.5
-        assert obs["rules"]["production_formula"].startswith("ships_per_turn = star_ru")
 
     def test_get_ascii_map(self, tools):
         """Test ASCII map generation."""
@@ -260,6 +255,9 @@ class TestAgentTools:
             "propose_orders",
             "submit_orders",
             "memory_query",
+            "simulate_combat",
+            "calculate_force_requirements",
+            "analyze_threat_landscape",
         }
 
         assert tool_names == required_tools
@@ -621,46 +619,6 @@ class TestLLMPlayer:
             llm_player._call_tool("invalid_tool", {}, tools)
 
 
-class TestMockBedrockClient:
-    """Test suite for MockBedrockClient."""
-
-    def test_initialization(self):
-        """Test mock client initializes."""
-        client = MockBedrockClient()
-        assert client.call_count == 0
-
-    def test_invoke_increments_counter(self):
-        """Test that invoke increments call counter."""
-        client = MockBedrockClient()
-        client.invoke([], "system prompt")
-
-        assert client.call_count == 1
-
-    def test_invoke_returns_response(self):
-        """Test that invoke returns proper response structure."""
-        client = MockBedrockClient()
-        response = client.invoke([], "system prompt")
-
-        assert "response" in response
-        assert "tool_calls" in response
-        assert "stop_reason" in response
-        assert "requires_tool_execution" in response
-
-    def test_invoke_saves_request(self):
-        """Test that invoke saves the last request."""
-        client = MockBedrockClient()
-        messages = [{"role": "user", "content": "test"}]
-        system = "test system"
-        tools = [{"name": "test_tool"}]
-
-        client.invoke(messages, system, tools)
-
-        assert client.last_request is not None
-        assert client.last_request["messages"] == messages
-        assert client.last_request["system"] == system
-        assert client.last_request["tools"] == tools
-
-
 class TestMemoryAutopopulation:
     """Test suite for memory auto-population feature."""
 
@@ -815,6 +773,269 @@ class TestMemoryAutopopulation:
 
         # Should only have one record (no duplicates)
         assert len(tools.memory["battle_log"]) == 1
+
+
+class TestCombatSimulationTools:
+    """Test suite for new combat simulation tools."""
+
+    @pytest.fixture
+    def game(self):
+        """Create a test game state."""
+        return generate_map(seed=42)
+
+    @pytest.fixture
+    def tools(self, game):
+        """Create AgentTools instance."""
+        return AgentTools(game, player_id="p2")
+
+    def test_simulate_combat_attacker_wins(self, tools):
+        """Test simulate_combat when attacker wins."""
+        result = tools.simulate_combat(attacker_ships=10, defender_ships=5)
+
+        assert result["winner"] == "attacker"
+        assert result["attacker_survivors"] > 0
+        assert result["defender_survivors"] == 0
+        assert result["attacker_losses"] == 3  # ceil(5/2) = 3
+        assert result["defender_losses"] == 5
+        assert "Attacker wins" in result["outcome_summary"]
+
+    def test_simulate_combat_defender_wins(self, tools):
+        """Test simulate_combat when defender wins."""
+        result = tools.simulate_combat(attacker_ships=5, defender_ships=10)
+
+        assert result["winner"] == "defender"
+        assert result["attacker_survivors"] == 0
+        assert result["defender_survivors"] > 0
+        assert result["attacker_losses"] == 5
+        assert result["defender_losses"] == 3  # ceil(5/2) = 3
+        assert "Defender wins" in result["outcome_summary"]
+
+    def test_simulate_combat_tie(self, tools):
+        """Test simulate_combat when forces are equal (tie)."""
+        result = tools.simulate_combat(attacker_ships=8, defender_ships=8)
+
+        assert result["winner"] is None
+        assert result["attacker_survivors"] == 0
+        assert result["defender_survivors"] == 0
+        assert result["attacker_losses"] == 8
+        assert result["defender_losses"] == 8
+        assert "Tie" in result["outcome_summary"]
+
+    def test_simulate_combat_minimum_force(self, tools):
+        """Test that N+1 attackers beats N defenders."""
+        # 4 attackers vs 3 defenders - should win
+        result = tools.simulate_combat(attacker_ships=4, defender_ships=3)
+
+        assert result["winner"] == "attacker"
+        assert result["attacker_survivors"] == 2  # 4 - ceil(3/2) = 4 - 2 = 2
+
+    def test_simulate_combat_zero_defenders(self, tools):
+        """Test simulate_combat with no defenders (undefended star)."""
+        result = tools.simulate_combat(attacker_ships=5, defender_ships=0)
+
+        assert result["winner"] == "attacker"
+        assert result["attacker_survivors"] == 5  # No losses
+        assert result["defender_survivors"] == 0
+        assert result["attacker_losses"] == 0
+        assert result["defender_losses"] == 0
+
+    def test_calculate_force_requirements_minimum(self, tools):
+        """Test force requirements with no survivor requirement."""
+        result = tools.calculate_force_requirements(defender_ships=5, desired_survivors=0)
+
+        assert result["minimum_attackers"] == 6  # 5 + 1
+        assert result["recommended_force"] == 6  # Same as minimum when no survivors needed
+        assert result["expected_losses"] == 3  # ceil(5/2)
+        assert result["expected_survivors"] == 3  # 6 - 3
+        assert result["overkill_amount"] == 0
+
+    def test_calculate_force_requirements_with_survivors(self, tools):
+        """Test force requirements with survivor requirement."""
+        result = tools.calculate_force_requirements(defender_ships=10, desired_survivors=5)
+
+        assert result["minimum_attackers"] == 11  # 10 + 1
+        assert result["recommended_force"] >= result["minimum_attackers"]
+        assert result["expected_survivors"] >= 5
+        assert result["expected_losses"] == 5  # ceil(10/2)
+        assert result["overkill_amount"] >= 0
+
+    def test_calculate_force_requirements_large_survivors(self, tools):
+        """Test force requirements with large survivor requirement."""
+        result = tools.calculate_force_requirements(defender_ships=3, desired_survivors=10)
+
+        assert result["minimum_attackers"] == 4  # 3 + 1
+        assert result["recommended_force"] >= 10 + 2  # Need at least 10 survivors + losses
+        assert result["expected_survivors"] >= 10
+
+    def test_analyze_threat_landscape_unvisited(self, tools, game):
+        """Test threat analysis for unvisited star."""
+        # Get an unvisited star
+        star = game.stars[0]
+        tools.player.visited_stars.discard(star.id)
+
+        result = tools.analyze_threat_landscape(star.id)
+
+        assert result["target_star_id"] == star.id
+        assert result["current_owner"] is None  # Unknown due to fog-of-war
+        assert result["known_defenders"] is None
+        assert result["distance_from_home"] >= 0
+        assert "FOG-OF-WAR" in result["warnings"][0]
+        assert "Unknown" in result["strategic_value"]
+
+    def test_analyze_threat_landscape_friendly_star(self, tools, game):
+        """Test threat analysis for player's own star."""
+        # Find a star owned by p2
+        p2_star = None
+        for star in game.stars:
+            if star.owner == "p2":
+                p2_star = star
+                break
+
+        if p2_star is None:
+            pytest.skip("No p2 star found in test game")
+
+        # Mark as visited
+        tools.player.visited_stars.add(p2_star.id)
+        p2_star.stationed_ships["p2"] = 10
+
+        result = tools.analyze_threat_landscape(p2_star.id)
+
+        assert result["target_star_id"] == p2_star.id
+        assert result["current_owner"] == "me"
+        assert result["known_defenders"] == 10
+        assert any("FRIENDLY STAR" in w for w in result["warnings"])
+
+    def test_analyze_threat_landscape_enemy_star(self, tools, game):
+        """Test threat analysis for enemy star."""
+        # Find a star owned by p1
+        p1_star = None
+        for star in game.stars:
+            if star.owner == "p1":
+                p1_star = star
+                break
+
+        if p1_star is None:
+            pytest.skip("No p1 star found in test game")
+
+        # Mark as visited (so we know ownership)
+        tools.player.visited_stars.add(p1_star.id)
+
+        result = tools.analyze_threat_landscape(p1_star.id)
+
+        assert result["target_star_id"] == p1_star.id
+        assert result["current_owner"] == "opp"
+        assert result["known_defenders"] is None  # Hidden by fog-of-war
+        assert result["threat_level"] in ["low", "medium", "high", "critical"]
+
+    def test_analyze_threat_landscape_npc_star(self, tools, game):
+        """Test threat analysis for NPC star."""
+        # Find an NPC star
+        npc_star = None
+        for star in game.stars:
+            if star.owner is None and star.npc_ships > 0:
+                npc_star = star
+                break
+
+        if npc_star is None:
+            pytest.skip("No NPC star found in test game")
+
+        # Mark as visited
+        tools.player.visited_stars.add(npc_star.id)
+
+        result = tools.analyze_threat_landscape(npc_star.id)
+
+        assert result["target_star_id"] == npc_star.id
+        assert result["current_owner"] == "npc"
+        assert result["known_defenders"] is not None  # NPC defenders visible
+        assert result["estimated_npc_defenders"] == npc_star.base_ru
+        assert result["recommended_force"] is not None
+
+    def test_analyze_threat_landscape_nearby_threats(self, tools, game):
+        """Test that nearby enemy stars are detected."""
+        # Create a scenario with nearby enemy stars
+        target = game.stars[0]
+        enemy_star = game.stars[1]
+
+        # Set ownership
+        target.owner = None
+        enemy_star.owner = "p1"
+
+        # Mark as visited
+        tools.player.visited_stars.add(target.id)
+        tools.player.visited_stars.add(enemy_star.id)
+
+        # Position enemy star close to target (modify coordinates)
+        enemy_star.x = target.x + 1
+        enemy_star.y = target.y + 1  # Distance = 1
+
+        result = tools.analyze_threat_landscape(target.id)
+
+        # Should detect nearby enemy
+        assert len(result["nearby_enemy_stars"]) >= 1
+        assert result["threat_level"] in ["medium", "high", "critical"]
+
+    def test_analyze_threat_landscape_hyperspace_risk(self, tools, game):
+        """Test that hyperspace risk is calculated correctly."""
+        # Get a distant star
+        distant_star = game.stars[-1]
+        tools.player.visited_stars.add(distant_star.id)
+
+        result = tools.analyze_threat_landscape(distant_star.id)
+
+        # Should have non-zero hyperspace risk
+        if result["distance_from_home"] > 0:
+            assert result["hyperspace_risk"] > 0
+            # Risk should increase with distance
+            assert result["hyperspace_risk"] < 1.0
+
+    def test_tool_registry_includes_new_tools(self):
+        """Test that new tools are registered."""
+        from src.agent.tool_models import TOOL_REGISTRY
+
+        assert "simulate_combat" in TOOL_REGISTRY
+        assert "calculate_force_requirements" in TOOL_REGISTRY
+        assert "analyze_threat_landscape" in TOOL_REGISTRY
+
+    def test_tool_definitions_includes_new_tools(self):
+        """Test that new tools are in definitions."""
+        from src.agent.tool_models import TOOL_DEFINITIONS
+
+        tool_names = {td["name"] for td in TOOL_DEFINITIONS}
+
+        assert "simulate_combat" in tool_names
+        assert "calculate_force_requirements" in tool_names
+        assert "analyze_threat_landscape" in tool_names
+
+    def test_execute_tool_simulate_combat(self, tools):
+        """Test executing simulate_combat through execute_tool."""
+        result = tools.execute_tool(
+            "simulate_combat", {"attacker_ships": 10, "defender_ships": 5}
+        )
+
+        assert "winner" in result
+        assert "attacker_survivors" in result
+        assert "outcome_summary" in result
+
+    def test_execute_tool_calculate_force_requirements(self, tools):
+        """Test executing calculate_force_requirements through execute_tool."""
+        result = tools.execute_tool(
+            "calculate_force_requirements", {"defender_ships": 5, "desired_survivors": 3}
+        )
+
+        assert "minimum_attackers" in result
+        assert "recommended_force" in result
+        assert "explanation" in result
+
+    def test_execute_tool_analyze_threat_landscape(self, tools, game):
+        """Test executing analyze_threat_landscape through execute_tool."""
+        star = game.stars[0]
+        tools.player.visited_stars.add(star.id)
+
+        result = tools.execute_tool("analyze_threat_landscape", {"target_star": star.id})
+
+        assert "target_star_id" in result
+        assert "threat_level" in result
+        assert "strategic_value" in result
 
 
 if __name__ == "__main__":

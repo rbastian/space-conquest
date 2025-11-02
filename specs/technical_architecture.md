@@ -95,7 +95,7 @@ The architecture emphasizes:
   │   │   ├── __init__.py
   │   │   ├── llm_player.py     # Main LLM player controller
   │   │   ├── tools.py          # 7 tools for LLM agent
-  │   │   ├── bedrock_client.py # AWS Bedrock integration
+  │   │   ├── langchain_client.py # Multi-provider LLM integration (Bedrock, OpenAI, Anthropic, Ollama)
   │   │   ├── memory.py         # Agent memory system
   │   │   ├── heuristics.py     # Target scoring, garrison rules
   │   │   └── prompts.py        # System prompts & templates
@@ -470,8 +470,8 @@ The LLM agent uses AWS Bedrock (Claude model) via LangChain to play as Player 2.
 class LLMPlayer:
     """LLM-powered Player 2 agent."""
 
-    def __init__(self, bedrock_client: BedrockClient):
-        self.bedrock = bedrock_client
+    def __init__(self, provider: str = "bedrock", model: str = None):
+        self.client = LangChainClient(provider=provider, model_id=model)
         self.tools = AgentTools()
         self.memory = AgentMemory()
         self.chain = self._build_langchain()

@@ -9,14 +9,12 @@ import json
 import logging
 from typing import Any
 
-from tenacity import retry, stop_after_attempt, wait_exponential, before_sleep_log
+from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 
 from .tool_models import BedrockResponse
 
 try:
-    from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
-    from langchain_core.tools import StructuredTool
-    from langchain_core.utils.function_calling import convert_to_openai_tool
+    from langchain_core.messages import AIMessage, HumanMessage
 
     LANGCHAIN_AVAILABLE = True
 except ImportError:
@@ -82,8 +80,7 @@ def get_model_id(provider: str, model_name: str | None) -> str:
     """
     if provider not in PROVIDER_MODELS:
         raise ValueError(
-            f"Unknown provider '{provider}'. "
-            f"Supported: {', '.join(PROVIDER_MODELS.keys())}"
+            f"Unknown provider '{provider}'. Supported: {', '.join(PROVIDER_MODELS.keys())}"
         )
 
     # Use default model if none specified
@@ -134,9 +131,7 @@ class LangChainClient:
             Exception: If provider initialization fails
         """
         if not LANGCHAIN_AVAILABLE:
-            raise ImportError(
-                "langchain is required. Install with: uv sync"
-            )
+            raise ImportError("langchain is required. Install with: uv sync")
 
         self.provider = provider
         self.model_id = get_model_id(provider, model_id)
@@ -234,23 +229,29 @@ class LangChainClient:
                     # Convert tool result blocks to ToolMessage objects
                     for block in content:
                         if block.get("type") == "tool_result":
-                            lc_messages.append(ToolMessage(
-                                content=block.get("content", ""),
-                                tool_call_id=block.get("tool_use_id", ""),
-                            ))
+                            lc_messages.append(
+                                ToolMessage(
+                                    content=block.get("content", ""),
+                                    tool_call_id=block.get("tool_use_id", ""),
+                                )
+                            )
                 elif role == "assistant":
                     # For assistant messages with content blocks, extract text and tool calls
-                    text_parts = [block.get("text", "") for block in content if block.get("type") == "text"]
+                    text_parts = [
+                        block.get("text", "") for block in content if block.get("type") == "text"
+                    ]
                     tool_calls = []
 
                     # Extract tool_use blocks and convert to tool_calls format
                     for block in content:
                         if block.get("type") == "tool_use":
-                            tool_calls.append({
-                                "name": block.get("name"),
-                                "args": block.get("input", {}),
-                                "id": block.get("id"),
-                            })
+                            tool_calls.append(
+                                {
+                                    "name": block.get("name"),
+                                    "args": block.get("input", {}),
+                                    "id": block.get("id"),
+                                }
+                            )
 
                     # Create AIMessage with tool_calls if present
                     ai_msg = AIMessage(
@@ -287,14 +288,16 @@ class LangChainClient:
         lc_tools = []
         for tool in tools:
             # Convert to OpenAI tool format (LangChain standard)
-            lc_tools.append({
-                "type": "function",
-                "function": {
-                    "name": tool["name"],
-                    "description": tool["description"],
-                    "parameters": tool["input_schema"],
-                },
-            })
+            lc_tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool["name"],
+                        "description": tool["description"],
+                        "parameters": tool["input_schema"],
+                    },
+                }
+            )
 
         return lc_tools
 
@@ -312,10 +315,19 @@ class LangChainClient:
     ) -> dict[str, Any]:
         """Invoke LLM with messages and optional tools.
 
+        PROMPT CACHING (Anthropic/Bedrock only):
+        The system prompt is automatically cached for Anthropic and Bedrock providers.
+        On the first call within a turn, the system prompt + tools are written to cache.
+        On subsequent calls (iterations 2-15), cached content is read instead of re-sent,
+        reducing token usage by ~90% on cached portions.
+
+        Cache lifetime: ~5 minutes (provider-specific)
+        Expected savings: 10,000+ tokens per turn for typical gameplay
+
         Args:
             messages: List of message dicts with "role" and "content"
-            system: System prompt string
-            tools: Optional list of tool definitions
+            system: System prompt string (will be cached for Anthropic/Bedrock)
+            tools: Optional list of tool definitions (included in cache scope)
             max_iterations: Maximum tool use iterations (not used, for compatibility)
 
         Returns:
@@ -332,11 +344,23 @@ class LangChainClient:
             # Convert messages to LangChain format
             lc_messages = self._convert_messages(messages)
 
-            # Prepend system message
+            # Prepend system message with caching support for Anthropic/Bedrock
             if system:
                 from langchain_core.messages import SystemMessage
 
-                lc_messages.insert(0, SystemMessage(content=system))
+                # Enable prompt caching for providers that support it
+                if self.provider in ["anthropic", "bedrock"]:
+                    # Mark system prompt for caching (reduces token usage by ~90% on subsequent calls)
+                    lc_messages.insert(
+                        0,
+                        SystemMessage(
+                            content=system,
+                            additional_kwargs={"cache_control": {"type": "ephemeral"}},
+                        ),
+                    )
+                    logger.debug(f"Enabled prompt caching for {self.provider}")
+                else:
+                    lc_messages.insert(0, SystemMessage(content=system))
 
             # Bind tools if provided
             if tools:
@@ -346,6 +370,49 @@ class LangChainClient:
             else:
                 response = self.client.invoke(lc_messages)
 
+            # Log cache usage for providers that support it
+            if self.provider in ["anthropic", "bedrock"]:
+                # Try usage_metadata first (Anthropic direct API)
+                if hasattr(response, "usage_metadata") and response.usage_metadata:
+                    usage = response.usage_metadata
+                    cache_read = usage.get("cache_read_input_tokens", 0)
+                    cache_creation = usage.get("cache_creation_input_tokens", 0)
+                    input_tokens = usage.get("input_tokens", 0)
+                    output_tokens = usage.get("output_tokens", 0)
+
+                    if cache_read > 0:
+                        logger.info(
+                            f"Cache HIT: {cache_read} tokens read from cache (saved ~90% cost)"
+                        )
+                    if cache_creation > 0:
+                        logger.info(f"Cache MISS: {cache_creation} tokens written to cache")
+
+                    logger.info(
+                        f"Token usage - Input: {input_tokens}, Output: {output_tokens}, Cache read: {cache_read}, Cache write: {cache_creation}"
+                    )
+
+                # Also check response_metadata (Bedrock via LangChain might use this)
+                elif hasattr(response, "response_metadata") and response.response_metadata:
+                    metadata = response.response_metadata
+                    # Bedrock puts usage in response_metadata.usage or directly in response_metadata
+                    usage = metadata.get("usage", metadata)
+
+                    input_tokens = usage.get("input_tokens", 0)
+                    output_tokens = usage.get("output_tokens", 0)
+                    cache_read = usage.get("cache_read_input_tokens", 0)
+                    cache_creation = usage.get("cache_creation_input_tokens", 0)
+
+                    if cache_read > 0:
+                        logger.info(
+                            f"Cache HIT: {cache_read} tokens read from cache (saved ~90% cost)"
+                        )
+                    if cache_creation > 0:
+                        logger.info(f"Cache MISS: {cache_creation} tokens written to cache")
+
+                    logger.info(
+                        f"Token usage - Input: {input_tokens}, Output: {output_tokens}, Cache read: {cache_read}, Cache write: {cache_creation}"
+                    )
+
             # Check if model wants to use tools
             if hasattr(response, "tool_calls") and response.tool_calls:
                 tool_calls_made = []
@@ -353,26 +420,32 @@ class LangChainClient:
 
                 # Add any text content first (reasoning/thinking)
                 if response.content:
-                    content_blocks.append({
-                        "type": "text",
-                        "text": response.content,
-                    })
+                    content_blocks.append(
+                        {
+                            "type": "text",
+                            "text": response.content,
+                        }
+                    )
                 else:
                     # Log when there's no reasoning text (common with OpenAI)
                     logger.debug(f"{self.provider}: No reasoning text provided with tool calls")
 
                 # Then add tool calls
                 for tool_call in response.tool_calls:
-                    tool_calls_made.append({
-                        "name": tool_call["name"],
-                        "input": tool_call["args"],
-                    })
-                    content_blocks.append({
-                        "type": "tool_use",
-                        "id": tool_call["id"],
-                        "name": tool_call["name"],
-                        "input": tool_call["args"],
-                    })
+                    tool_calls_made.append(
+                        {
+                            "name": tool_call["name"],
+                            "input": tool_call["args"],
+                        }
+                    )
+                    content_blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": tool_call["id"],
+                            "name": tool_call["name"],
+                            "input": tool_call["args"],
+                        }
+                    )
 
                 return BedrockResponse(
                     response=content_blocks,
@@ -395,6 +468,7 @@ class LangChainClient:
 
         except Exception as e:
             import traceback
+
             error_details = traceback.format_exc()
             logger.error(f"{self.provider} API call failed: {e}\n{error_details}")
             raise Exception(f"{self.provider} API call failed: {e}")
@@ -420,11 +494,13 @@ class LangChainClient:
         # Add tool results to conversation
         tool_result_blocks = []
         for result in tool_results:
-            tool_result_blocks.append({
-                "type": "tool_result",
-                "tool_use_id": result["tool_use_id"],
-                "content": json.dumps(result["content"]),
-            })
+            tool_result_blocks.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": result["tool_use_id"],
+                    "content": json.dumps(result["content"]),
+                }
+            )
 
         messages.append({"role": "user", "content": tool_result_blocks})
 

@@ -3,16 +3,23 @@
 This module coordinates the turn phases in the correct order:
 1. Fleet Movement (Phase 1)
 2. Combat Resolution (Phase 2)
-3. Victory Assessment (Phase 3)
-4. Display Rendering & Order Collection (Phase 4) - happens in caller
-5. Rebellions & Production (Phase 5)
+3. Rebellion Resolution (Phase 3)
+4. Victory Assessment (Phase 4)
+5. Display Rendering & Order Collection (Phase 5) - happens in caller
+6. Order Processing (Phase 6)
+7. Ship Production (Phase 7)
 
-The turn counter increments AFTER phases 1-3 but BEFORE phase 4 (display/orders),
-so that players see the results of movement/combat when making decisions.
+The turn counter increments AFTER phases 1-4 but BEFORE phase 5 (display/orders),
+so that players see the results of movement/combat/rebellions when making decisions.
+
+Architecture:
+Each phase is an independent, composable method. Orchestration methods compose
+these phases in the correct order. This makes it easy to reorder, test, or modify
+individual phases without affecting others.
 """
 
 import logging
-from typing import Dict, List, Optional
+from dataclasses import dataclass
 
 from ..models.fleet import Fleet
 from ..models.game import Game
@@ -21,36 +28,57 @@ from ..models.star import Star
 from ..utils.distance import chebyshev_distance
 from .combat import CombatEvent, RebellionEvent, process_combat
 from .movement import HyperspaceLoss, process_fleet_movement
-from .production import process_rebellions_and_production
+from .production import (
+    process_production,
+    process_rebellions,
+    process_rebellions_and_production,
+)
 from .victory import check_victory
 
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class PhaseResults:
+    """Results from executing pre-display phases (1-4).
+
+    Contains all events that occurred during phases 1-4 so they can be
+    displayed to players before they submit orders.
+    """
+
+    combat_events: list[CombatEvent]
+    hyperspace_losses: list[HyperspaceLoss]
+    rebellion_events: list[RebellionEvent]
+
+
 class TurnExecutor:
-    """Orchestrates the turn phases in the correct order."""
+    """Orchestrates the turn phases in the correct order.
 
-    def execute_phases_1_to_3(
-        self, game: Game
-    ) -> tuple[Game, List[CombatEvent], List[HyperspaceLoss]]:
-        """Execute phases 1-3: Movement, Combat, Victory Check.
+    Each phase is an independent method that can be tested and modified separately.
+    Orchestration methods compose these phases in the correct execution order.
+    """
 
-        This should be called BEFORE displaying state and collecting orders.
-        After this returns, the turn counter will be incremented so the display
-        shows the correct turn number.
+    # =========================================================================
+    # INDEPENDENT PHASE METHODS
+    # Each method handles ONE phase and returns updated game state + events
+    # =========================================================================
+
+    def execute_phase_movement(self, game: Game) -> tuple[Game, list[HyperspaceLoss]]:
+        """Execute Phase 1: Fleet Movement.
+
+        All fleets move one step toward their destination. Fleets that have
+        traveled their full distance arrive and merge with stationed ships
+        or trigger combat.
 
         Args:
             game: Current game state
 
         Returns:
-            Tuple of (updated game state, combat events, hyperspace losses)
-            Note: If game.winner is set, the game has ended
+            Tuple of (updated game state, hyperspace loss events)
         """
-        # Phase 1: Fleet Movement
         game, hyperspace_losses = process_fleet_movement(game)
 
         # Store hyperspace losses in game state for observation
-        # Convert HyperspaceLoss objects to dictionaries for storage
         game.hyperspace_losses_last_turn = [
             {
                 "fleet_id": loss.fleet_id,
@@ -62,12 +90,24 @@ class TurnExecutor:
             for loss in hyperspace_losses
         ]
 
-        # Phase 2: Combat Resolution
+        return game, hyperspace_losses
+
+    def execute_phase_combat(self, game: Game) -> tuple[Game, list[CombatEvent]]:
+        """Execute Phase 2: Combat Resolution.
+
+        Resolve all combats at stars where multiple players have ships.
+        Updates star ownership and stationed ships based on combat outcomes.
+
+        Args:
+            game: Current game state
+
+        Returns:
+            Tuple of (updated game state, combat events)
+        """
         game, combat_events = process_combat(game)
 
         # Store combat events in game state for observation
         # IMPORTANT: Store BEFORE victory check so final turn combats are visible
-        # Convert CombatEvent objects to dictionaries for storage
         game.combats_last_turn = [
             {
                 "star_id": event.star_id,
@@ -90,30 +130,153 @@ class TurnExecutor:
         ]
 
         # Update combat history (keep last 5 turns)
-        # Append current turn's combats to history
         game.combats_history.append(game.combats_last_turn)
-
-        # Keep only last 5 turns (trim from front if needed)
         if len(game.combats_history) > 5:
             game.combats_history = game.combats_history[-5:]
 
-        # Phase 3: Victory Assessment
+        return game, combat_events
+
+    def execute_phase_rebellions(self, game: Game) -> tuple[Game, list[RebellionEvent]]:
+        """Execute Phase 3: Rebellion Resolution.
+
+        Check each player-controlled star for rebellions. Under-garrisoned stars
+        have a 50% chance to rebel. Rebellions trigger combat between garrison
+        and rebel forces.
+
+        Args:
+            game: Current game state
+
+        Returns:
+            Tuple of (updated game state, rebellion events)
+        """
+        game, rebellion_events = process_rebellions(game)
+
+        # Store rebellion events in game state for observation
+        game.rebellions_last_turn = [
+            {
+                "star": event.star,
+                "star_name": event.star_name,
+                "owner": event.owner,
+                "ru": event.ru,
+                "garrison_before": event.garrison_before,
+                "rebel_ships": event.rebel_ships,
+                "outcome": event.outcome,
+                "garrison_after": event.garrison_after,
+                "rebel_survivors": event.rebel_survivors,
+            }
+            for event in rebellion_events
+        ]
+
+        return game, rebellion_events
+
+    def execute_phase_victory_check(self, game: Game) -> Game:
+        """Execute Phase 4: Victory Assessment.
+
+        Check if either player has won by controlling opponent's home star,
+        or if a draw condition has been met (e.g., both eliminated).
+
+        Args:
+            game: Current game state
+
+        Returns:
+            Updated game state (game.winner set if game ended)
+        """
         check_victory(game)
-        # If game.winner is set, the game has ended
-        # Caller should check this and not proceed with order collection
+        return game
+
+    def execute_phase_orders(self, game: Game, orders: dict[str, list[Order]]) -> Game:
+        """Execute Phase 6: Order Processing.
+
+        Process player orders to create fleets. Validates orders and deducts
+        ships from origin stars. Invalid orders are logged but don't crash.
+
+        Args:
+            game: Current game state
+            orders: Dictionary mapping player ID to list of orders
+                   e.g., {"p1": [Order(...), ...], "p2": [...]}
+
+        Returns:
+            Updated game state with new fleets created
+        """
+        game = self._process_orders(game, orders)
+        return game
+
+    def execute_phase_production(self, game: Game) -> Game:
+        """Execute Phase 7: Ship Production.
+
+        Produce ships at all controlled stars that did not rebel this turn.
+        Home stars produce 4 ships, other stars produce base_ru ships.
+
+        Args:
+            game: Current game state
+
+        Returns:
+            Updated game state with production added
+        """
+        # Track which stars rebelled this turn (no production for them)
+        rebelled_star_ids = {event["star"] for event in game.rebellions_last_turn}
+
+        game = process_production(game, rebelled_star_ids)
+        return game
+
+    # =========================================================================
+    # ORCHESTRATION METHODS
+    # Compose independent phases in the correct execution order
+    # =========================================================================
+
+    def execute_pre_display_phases(self, game: Game) -> tuple[Game, PhaseResults]:
+        """Execute phases 1-4 (before display/order collection).
+
+        This orchestration method runs all phases that happen before players
+        see the game state and submit orders. After these phases, the turn
+        counter is incremented so the display shows the correct turn number.
+
+        Phases executed:
+        1. Fleet Movement
+        2. Combat Resolution
+        3. Rebellion Resolution
+        4. Victory Assessment
+
+        Args:
+            game: Current game state
+
+        Returns:
+            Tuple of (updated game state, phase results)
+            Note: If game.winner is set, the game has ended
+        """
+        # Phase 1: Fleet Movement
+        game, hyperspace_losses = self.execute_phase_movement(game)
+
+        # Phase 2: Combat Resolution
+        game, combat_events = self.execute_phase_combat(game)
+
+        # Phase 3: Rebellion Resolution
+        game, rebellion_events = self.execute_phase_rebellions(game)
+
+        # Phase 4: Victory Assessment
+        game = self.execute_phase_victory_check(game)
 
         # Increment turn counter BEFORE displaying and collecting orders
-        # This ensures the display shows the correct turn after phases 1-3 execute
+        # This ensures the display shows the correct turn after phases 1-4 execute
         game.turn += 1
 
-        return game, combat_events, hyperspace_losses
+        results = PhaseResults(
+            combat_events=combat_events,
+            hyperspace_losses=hyperspace_losses,
+            rebellion_events=rebellion_events,
+        )
 
-    def execute_phases_4_to_5(
-        self, game: Game, orders: Dict[str, List[Order]]
-    ) -> tuple[Game, List[RebellionEvent]]:
-        """Execute phases 4-5: Order Processing and Production.
+        return game, results
 
-        This should be called AFTER phases 1-3 and AFTER collecting orders from players.
+    def execute_post_order_phases(self, game: Game, orders: dict[str, list[Order]]) -> Game:
+        """Execute phases 6-7 (after order collection).
+
+        This orchestration method runs all phases that happen after players
+        submit orders. These phases prepare the game state for the next turn.
+
+        Phases executed:
+        6. Order Processing
+        7. Ship Production
 
         Args:
             game: Current game state (with turn already incremented)
@@ -121,16 +284,104 @@ class TurnExecutor:
                    e.g., {"p1": [Order(...), ...], "p2": [...]}
 
         Returns:
+            Updated game state
+        """
+        # Phase 6: Order Processing
+        game = self.execute_phase_orders(game, orders)
+
+        # Phase 7: Ship Production
+        game = self.execute_phase_production(game)
+
+        return game
+
+    # =========================================================================
+    # BACKWARD COMPATIBILITY METHODS
+    # Wrappers for old method names to avoid breaking existing code
+    # =========================================================================
+
+    def execute_phases_1_to_4(
+        self, game: Game
+    ) -> tuple[Game, list[CombatEvent], list[HyperspaceLoss], list[RebellionEvent]]:
+        """Execute phases 1-4: Movement, Combat, Rebellions, Victory Check.
+
+        BACKWARD COMPATIBILITY: This method wraps the new execute_pre_display_phases()
+        method to maintain the old return signature.
+
+        This should be called BEFORE displaying state and collecting orders.
+        After this returns, the turn counter will be incremented so the display
+        shows the correct turn number.
+
+        Args:
+            game: Current game state
+
+        Returns:
+            Tuple of (updated game state, combat events, hyperspace losses, rebellion events)
+            Note: If game.winner is set, the game has ended
+        """
+        game, results = self.execute_pre_display_phases(game)
+        return game, results.combat_events, results.hyperspace_losses, results.rebellion_events
+
+    def execute_phases_6_to_7(self, game: Game, orders: dict[str, list[Order]]) -> Game:
+        """Execute phases 6-7: Order Processing and Production.
+
+        BACKWARD COMPATIBILITY: This method wraps the new execute_post_order_phases()
+        method to maintain the old method name.
+
+        This should be called AFTER phases 1-4 and AFTER collecting orders from players.
+
+        Args:
+            game: Current game state (with turn already incremented)
+            orders: Dictionary mapping player ID to list of orders
+                   e.g., {"p1": [Order(...), ...], "p2": [...]}
+
+        Returns:
+            Updated game state
+        """
+        return self.execute_post_order_phases(game, orders)
+
+    # Backward compatibility methods (renamed but same behavior)
+    def execute_phases_1_to_3(
+        self, game: Game
+    ) -> tuple[Game, list[CombatEvent], list[HyperspaceLoss]]:
+        """Legacy method: Execute phases 1-3 (Movement, Combat, Victory).
+
+        DEPRECATED: This method exists for backward compatibility only.
+        Use execute_phases_1_to_4() instead, which also includes rebellions.
+
+        Args:
+            game: Current game state
+
+        Returns:
+            Tuple of (updated game state, combat events, hyperspace losses)
+        """
+        game, combat_events, hyperspace_losses, _ = self.execute_phases_1_to_4(game)
+        return game, combat_events, hyperspace_losses
+
+    def execute_phases_4_to_5(
+        self, game: Game, orders: dict[str, list[Order]]
+    ) -> tuple[Game, list[RebellionEvent]]:
+        """Legacy method: Execute phases 4-5 (Orders, Rebellions & Production).
+
+        DEPRECATED: This method exists for backward compatibility only.
+        It executes rebellions and production together (old Phase 5 behavior).
+
+        For new code, use execute_phases_6_to_7() which only does orders and production,
+        since rebellions now happen in Phase 3 (before orders).
+
+        Args:
+            game: Current game state (with turn already incremented)
+            orders: Dictionary mapping player ID to list of orders
+
+        Returns:
             Tuple of (updated game state, rebellion events)
         """
         # Phase 4: Process Orders
         game = self._process_orders(game, orders)
 
-        # Phase 5: Rebellions & Production
+        # Phase 5: Rebellions & Production (combined for backward compatibility)
         game, rebellion_events = process_rebellions_and_production(game)
 
         # Store rebellion events in game state for observation
-        # Convert RebellionEvent objects to dictionaries for storage
         game.rebellions_last_turn = [
             {
                 "star": event.star,
@@ -149,16 +400,19 @@ class TurnExecutor:
         return game, rebellion_events
 
     def execute_turn(
-        self, game: Game, orders: Dict[str, List[Order]]
-    ) -> tuple[Game, List[CombatEvent], List[HyperspaceLoss], List[RebellionEvent]]:
+        self, game: Game, orders: dict[str, list[Order]]
+    ) -> tuple[Game, list[CombatEvent], list[HyperspaceLoss], list[RebellionEvent]]:
         """Execute one complete turn (legacy method for backward compatibility).
 
+        BACKWARD COMPATIBILITY: This method wraps the new orchestration methods
+        to maintain the old method signature.
+
         WARNING: This method executes all phases in one go, which means the display
-        will show state BEFORE phases 1-3 execute. This is incorrect for the main
+        will show state BEFORE phases 1-4 execute. This is incorrect for the main
         game loop but may be needed for tests that expect the old behavior.
 
-        For the main game loop, use execute_phases_1_to_3() followed by
-        execute_phases_4_to_5() with display/order collection in between.
+        For the main game loop, use execute_pre_display_phases() followed by
+        execute_post_order_phases() with display/order collection in between.
 
         Args:
             game: Current game state
@@ -168,19 +422,24 @@ class TurnExecutor:
         Returns:
             Tuple of (updated game state, combat events, hyperspace losses, rebellion events)
         """
-        # Execute phases 1-3
-        game, combat_events, hyperspace_losses = self.execute_phases_1_to_3(game)
+        # Execute phases 1-4 (Movement, Combat, Rebellions, Victory)
+        game, results = self.execute_pre_display_phases(game)
 
         # Check if game ended
         if game.winner:
-            return game, combat_events, hyperspace_losses, []
+            return game, results.combat_events, results.hyperspace_losses, results.rebellion_events
 
-        # Execute phases 4-5
-        game, rebellion_events = self.execute_phases_4_to_5(game, orders)
+        # Execute phases 6-7 (Orders, Production)
+        game = self.execute_post_order_phases(game, orders)
 
-        return game, combat_events, hyperspace_losses, rebellion_events
+        return game, results.combat_events, results.hyperspace_losses, results.rebellion_events
 
-    def _process_orders(self, game: Game, orders: Dict[str, List[Order]]) -> Game:
+    # =========================================================================
+    # INTERNAL HELPER METHODS
+    # Private methods for order processing and validation
+    # =========================================================================
+
+    def _process_orders(self, game: Game, orders: dict[str, list[Order]]) -> Game:
         """Process player orders and create fleets with graceful error handling.
 
         Validates and executes player move orders with hybrid validation:
@@ -205,9 +464,7 @@ class TurnExecutor:
             if not player_orders:
                 continue
 
-            errors = self._process_player_orders(
-                game, player_id, player_orders, star_dict
-            )
+            errors = self._process_player_orders(game, player_id, player_orders, star_dict)
 
             if errors:
                 # Log errors but don't crash
@@ -222,9 +479,9 @@ class TurnExecutor:
         self,
         game: Game,
         player_id: str,
-        orders: List[Order],
-        star_dict: Dict[str, Star],
-    ) -> List[str]:
+        orders: list[Order],
+        star_dict: dict[str, Star],
+    ) -> list[str]:
         """Process orders for one player with error handling.
 
         Uses hybrid validation approach:
@@ -243,9 +500,7 @@ class TurnExecutor:
         errors = []
 
         # Step 1: Check for over-commitment (strict)
-        over_commitment_error = self._check_over_commitment(
-            game, player_id, orders, star_dict
-        )
+        over_commitment_error = self._check_over_commitment(game, player_id, orders, star_dict)
         if over_commitment_error:
             errors.append(over_commitment_error)
             return errors  # Reject entire order set
@@ -257,7 +512,8 @@ class TurnExecutor:
                 self._execute_order(game, player_id, order, star_dict)
             except ValueError as e:
                 errors.append(
-                    f"Order {i} ({order.from_star} -> {order.to_star}, {order.ships} ships): {str(e)}"
+                    f"Order {i} ({order.from_star} -> {order.to_star}, "
+                    f"{order.ships} ships): {str(e)}"
                 )
                 # Continue to next order (skip this one)
 
@@ -267,9 +523,9 @@ class TurnExecutor:
         self,
         game: Game,
         player_id: str,
-        orders: List[Order],
-        star_dict: Dict[str, Star],
-    ) -> Optional[str]:
+        orders: list[Order],
+        star_dict: dict[str, Star],
+    ) -> str | None:
         """Check if player is trying to send more ships than available from any star.
 
         Args:
@@ -281,7 +537,7 @@ class TurnExecutor:
         Returns:
             Error message if over-committed, None if valid
         """
-        ships_by_star: Dict[str, int] = {}
+        ships_by_star: dict[str, int] = {}
 
         for order in orders:
             if order.from_star not in ships_by_star:
@@ -318,7 +574,7 @@ class TurnExecutor:
         return None
 
     def _validate_single_order(
-        self, game: Game, player_id: str, order: Order, star_dict: Dict[str, Star]
+        self, game: Game, player_id: str, order: Order, star_dict: dict[str, Star]
     ) -> None:
         """Validate a single order. Raises ValueError if invalid.
 
@@ -356,11 +612,12 @@ class TurnExecutor:
         available = from_star.stationed_ships.get(player_id, 0)
         if order.ships > available:
             raise ValueError(
-                f"Insufficient ships at {order.from_star}: requested {order.ships}, available {available}"
+                f"Insufficient ships at {order.from_star}: "
+                f"requested {order.ships}, available {available}"
             )
 
     def _execute_order(
-        self, game: Game, player_id: str, order: Order, star_dict: Dict[str, Star]
+        self, game: Game, player_id: str, order: Order, star_dict: dict[str, Star]
     ) -> None:
         """Execute a single validated order.
 
@@ -377,9 +634,7 @@ class TurnExecutor:
         dest_star = star_dict[order.to_star]
 
         # Calculate distance
-        distance = chebyshev_distance(
-            origin_star.x, origin_star.y, dest_star.x, dest_star.y
-        )
+        distance = chebyshev_distance(origin_star.x, origin_star.y, dest_star.x, dest_star.y)
 
         # Deduct ships from origin star immediately
         # This ensures ships don't participate in combat after being ordered to depart
