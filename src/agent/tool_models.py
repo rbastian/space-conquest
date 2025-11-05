@@ -229,6 +229,38 @@ class GameRules(BaseModel):
     production_formula: str  # Explicit formula: "ships_per_turn = star_ru"
 
 
+class ThreatVector(BaseModel):
+    """Model for enemy threat vector toward home star.
+
+    Represents a calculated threat from an enemy-controlled star,
+    including distance, estimated force, and required defenses.
+    """
+
+    enemy_star_id: str = Field(description="Enemy star ID (e.g., 'K')")
+    enemy_star_name: str = Field(description="Enemy star name")
+    distance_to_home: int = Field(description="Chebyshev distance to your home star (parsecs)")
+    known_enemy_ru: int | None = Field(description="Known RU of enemy star (null if fog-of-war)")
+    estimated_enemy_production: int = Field(
+        description="Estimated enemy production per turn from this star (RU/turn)"
+    )
+    last_seen_turn: int | None = Field(
+        description="Turn when this star was last observed in combat/ownership change"
+    )
+    estimated_ships: int = Field(
+        description="Estimated current enemy ships at this star (based on last combat + production)"
+    )
+    estimated_arrival_turn: int = Field(
+        description="Turn when enemy could reach your home (current_turn + distance)"
+    )
+    required_home_garrison: int = Field(
+        description="Minimum ships needed at home to defend against this threat (enemy_ships + 1)"
+    )
+    threat_severity: Literal["low", "medium", "high", "critical"] = Field(
+        description="Threat classification based on distance and force"
+    )
+    explanation: str = Field(description="Human-readable explanation of the threat calculation")
+
+
 class ObservationOutput(BaseModel):
     """Output for get_observation tool."""
 
@@ -244,6 +276,10 @@ class ObservationOutput(BaseModel):
     rebellions_last_turn: list[RebellionReport]
     hyperspace_losses_last_turn: list[HyperspaceLossReport]
     production_report: list[ProductionReport]
+    active_threat_vectors: list[ThreatVector] = Field(
+        default_factory=list,
+        description="Pre-calculated threat vectors from enemy positions to your home star",
+    )
 
 
 class AsciiMapOutput(BaseModel):
@@ -405,7 +441,7 @@ TOOL_REGISTRY = {
     "get_observation": {
         "input_model": GetObservationInput,
         "output_model": ObservationOutput,
-        "description": "Get current game state observation for Player 2 with fog-of-war filtering. Returns turn number, STRATEGIC DASHBOARD (at-a-glance metrics: total ships, production, fleet distribution), stars (SORTED BY DISTANCE from your home star - closest first, each with distance_from_home field showing Chebyshev distance), fleets, arrivals, combats (current turn + last 5 turns history), rebellions, hyperspace losses (YOUR fleets only), and production report. STARS: Sorted by distance_from_home (closest first) for easy target selection. Each star includes distance_from_home field - use this to identify nearby expansion targets. STRATEGIC DASHBOARD: Provides aggregate metrics (total_ships, total_production_per_turn, controlled_stars_count, stars_by_ru distribution) for quick strategic assessment. COMBAT HISTORY: combats_last_5_turns provides up to 5 turns of combat history (oldest to newest) for strategic pattern analysis.",
+        "description": "Get current game state observation for Player 2 with fog-of-war filtering. Returns turn number, STRATEGIC DASHBOARD (at-a-glance metrics: total ships, production, fleet distribution), stars (SORTED BY DISTANCE from your home star - closest first, each with distance_from_home field showing Chebyshev distance), fleets, arrivals, combats (current turn + last 5 turns history), rebellions, hyperspace losses (YOUR fleets only), production report, and ACTIVE THREAT VECTORS (pre-calculated threats from enemy positions). THREAT VECTORS: Each threat shows enemy star location, estimated force, arrival turn, required home garrison, and severity (critical/high/medium/low). Review these EVERY turn to ensure home defense is adequate. STARS: Sorted by distance_from_home (closest first) for easy target selection. Each star includes distance_from_home field - use this to identify nearby expansion targets. STRATEGIC DASHBOARD: Provides aggregate metrics (total_ships, total_production_per_turn, controlled_stars_count, stars_by_ru distribution) for quick strategic assessment. COMBAT HISTORY: combats_last_5_turns provides up to 5 turns of combat history (oldest to newest) for strategic pattern analysis.",
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
     "get_ascii_map": {

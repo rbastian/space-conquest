@@ -2,10 +2,10 @@
 
 from src.engine import generate_map
 from src.utils import (
-    HOME_DISTANCE_RANGE,
-    HOME_RU,
     GRID_X,
     GRID_Y,
+    HOME_DISTANCE_RANGE,
+    HOME_RU,
     NUM_STARS,
     chebyshev_distance,
 )
@@ -68,19 +68,11 @@ class TestMapGenerator:
         """Test that home stars are adequately separated across multiple seeds."""
         for seed in range(10):
             game = generate_map(seed=seed)
-            p1_home = next(
-                s for s in game.stars if s.id == game.players["p1"].home_star
-            )
-            p2_home = next(
-                s for s in game.stars if s.id == game.players["p2"].home_star
-            )
+            p1_home = next(s for s in game.stars if s.id == game.players["p1"].home_star)
+            p2_home = next(s for s in game.stars if s.id == game.players["p2"].home_star)
             separation = chebyshev_distance(p1_home.x, p1_home.y, p2_home.x, p2_home.y)
-            assert separation >= 6, (
-                f"Home stars too close: {separation} parsecs (seed {seed})"
-            )
-            assert separation <= 11, (
-                f"Home stars too far: {separation} parsecs (seed {seed})"
-            )
+            assert separation >= 6, f"Home stars too close: {separation} parsecs (seed {seed})"
+            assert separation <= 11, f"Home stars too far: {separation} parsecs (seed {seed})"
 
     def test_npc_stars_created(self):
         """Test that NPC stars are created correctly."""
@@ -238,9 +230,7 @@ class TestMapGenerator:
 
         # All star IDs should match exactly
         for s1, s2 in zip(game1.stars, game2.stars):
-            assert s1.id == s2.id, (
-                f"Star IDs should be deterministic: {s1.id} != {s2.id}"
-            )
+            assert s1.id == s2.id, f"Star IDs should be deterministic: {s1.id} != {s2.id}"
 
         # Home star IDs should match
         assert game1.players["p1"].home_star == game2.players["p1"].home_star
@@ -313,10 +303,18 @@ class TestMapGenerator:
         game = generate_map(42)
 
         # Separate NPC stars by quadrant
-        q1_npc = sorted([s.base_ru for s in game.stars if 0 <= s.x <= 5 and 0 <= s.y <= 4 and s.owner is None])
-        q2_npc = sorted([s.base_ru for s in game.stars if 6 <= s.x <= 11 and 0 <= s.y <= 4 and s.owner is None])
-        q3_npc = sorted([s.base_ru for s in game.stars if 0 <= s.x <= 5 and 5 <= s.y <= 9 and s.owner is None])
-        q4_npc = sorted([s.base_ru for s in game.stars if 6 <= s.x <= 11 and 5 <= s.y <= 9 and s.owner is None])
+        q1_npc = sorted(
+            [s.base_ru for s in game.stars if 0 <= s.x <= 5 and 0 <= s.y <= 4 and s.owner is None]
+        )
+        q2_npc = sorted(
+            [s.base_ru for s in game.stars if 6 <= s.x <= 11 and 0 <= s.y <= 4 and s.owner is None]
+        )
+        q3_npc = sorted(
+            [s.base_ru for s in game.stars if 0 <= s.x <= 5 and 5 <= s.y <= 9 and s.owner is None]
+        )
+        q4_npc = sorted(
+            [s.base_ru for s in game.stars if 6 <= s.x <= 11 and 5 <= s.y <= 9 and s.owner is None]
+        )
 
         # Q1 and Q4 should have {1, 2, 2, 3}
         assert q1_npc == [1, 2, 2, 3], f"Q1 NPC RU should be [1,2,2,3], got {q1_npc}"
@@ -336,8 +334,8 @@ class TestMapGenerator:
 
             separation = chebyshev_distance(p1_home.x, p1_home.y, p2_home.x, p2_home.y)
 
-            # With quadrant-based placement, home stars should be well separated
-            # P1 is in Q1 (0-5, 0-4), P2 is in Q4 (6-11, 5-9)
+            # With corner-based placement, home stars should be well separated
+            # Players are randomly assigned to opposite corners (0,0) and (11,9)
             # Minimum separation should be at least 6 parsecs
             assert separation >= 6, (
                 f"Home stars too close: {separation} parsecs (seed {seed}), "
@@ -366,3 +364,65 @@ class TestMapGenerator:
             assert sum(s.base_ru for s in q2_npc) == 6, f"Seed {seed}: Q2 should have 6 RU"
             assert sum(s.base_ru for s in q3_npc) == 6, f"Seed {seed}: Q3 should have 6 RU"
             assert sum(s.base_ru for s in q4_npc) == 8, f"Seed {seed}: Q4 should have 8 RU"
+
+    def test_corner_assignment_randomization(self):
+        """Test that corner assignments are randomized across different seeds."""
+        # Test multiple seeds to verify randomization
+        corner_configs = []
+        for seed in range(20):
+            game = generate_map(seed)
+            p1_home = next(s for s in game.stars if s.id == game.players["p1"].home_star)
+
+            # Check which corner each player got
+            # Corner A is (0,0), Corner B is (11,9)
+            # Players should be within 3 parsecs of their assigned corner
+            p1_dist_to_corner_a = chebyshev_distance(0, 0, p1_home.x, p1_home.y)
+
+            if p1_dist_to_corner_a <= 3:
+                p1_corner = "A"
+            else:
+                p1_corner = "B"
+
+            corner_configs.append(p1_corner)
+
+        # Should see both configurations across 20 seeds
+        unique_configs = set(corner_configs)
+        assert len(unique_configs) == 2, (
+            f"Expected to see both corner configurations across seeds, "
+            f"but only saw: {unique_configs}"
+        )
+
+        # Verify the corner assignments are stored in game state
+        game = generate_map(42)
+        assert game.corner_assignments is not None
+        assert "p1" in game.corner_assignments
+        assert "p2" in game.corner_assignments
+        assert game.corner_assignments["p1"] in [(0, 0), (11, 9)]
+        assert game.corner_assignments["p2"] in [(0, 0), (11, 9)]
+        # Players should have opposite corners
+        assert game.corner_assignments["p1"] != game.corner_assignments["p2"]
+
+    def test_corner_assignment_determinism(self):
+        """Test that same seed produces same corner assignments."""
+        # Test determinism for multiple seeds
+        for seed in [42, 123, 999, 1234, 5678]:
+            game1 = generate_map(seed)
+            game2 = generate_map(seed)
+
+            # Corner assignments should be identical
+            assert game1.corner_assignments == game2.corner_assignments, (
+                f"Seed {seed}: Corner assignments should be deterministic"
+            )
+
+            # Player home positions should be identical
+            p1_home_1 = next(s for s in game1.stars if s.id == game1.players["p1"].home_star)
+            p1_home_2 = next(s for s in game2.stars if s.id == game2.players["p1"].home_star)
+            assert (p1_home_1.x, p1_home_1.y) == (p1_home_2.x, p1_home_2.y), (
+                f"Seed {seed}: P1 home position should be deterministic"
+            )
+
+            p2_home_1 = next(s for s in game1.stars if s.id == game1.players["p2"].home_star)
+            p2_home_2 = next(s for s in game2.stars if s.id == game2.players["p2"].home_star)
+            assert (p2_home_1.x, p2_home_1.y) == (p2_home_2.x, p2_home_2.y), (
+                f"Seed {seed}: P2 home position should be deterministic"
+            )

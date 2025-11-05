@@ -273,6 +273,145 @@ def filter_tools_by_game_state(state: AgentState) -> list[str]:
     return tools
 
 
+def inject_defensive_urgency(game_context: dict) -> str:
+    """Generate dynamic defensive context based on threat level.
+
+    Returns additional prompt text to inject when threat is elevated.
+    This amplifies the importance of home defense when the LLM might
+    otherwise prioritize offense.
+
+    Args:
+        game_context: Current game context with threat_level, nearest_enemy_distance, home_garrison
+
+    Returns:
+        Additional prompt text for elevated threats, empty string otherwise
+    """
+    threat_level = game_context.get("threat_level")
+    nearest_enemy = game_context.get("nearest_enemy_distance")
+    home_garrison = game_context.get("home_garrison", 0)
+
+    # No injection needed for low/medium threat
+    if threat_level not in ("high", "critical"):
+        return ""
+
+    # Build urgency message based on threat level
+    if threat_level == "critical":
+        # Enemy within 2 parsecs - maximum urgency
+        urgency_msg = f"""
+
+DEFENSIVE URGENCY ALERT (CRITICAL):
+========================
+IMMEDIATE THREAT DETECTED: Enemy forces are within {nearest_enemy} parsecs of your home star.
+Current home garrison: {home_garrison} ships.
+
+CRITICAL ACTIONS REQUIRED:
+1. CALCULATE enemy strike capability from ALL enemy stars within 4 parsecs
+2. VERIFY home garrison exceeds enemy strike force by at least 2 ships
+3. If home is under-defended: IMMEDIATELY pull back fleets OR redirect production
+4. Consider pre-emptive strikes on enemy staging bases to eliminate threat
+
+WARNING: The enemy can reach your home in {nearest_enemy} turns. If they attack with superior force,
+you will LOSE THE GAME regardless of all other achievements. Home defense is your FIRST priority.
+
+Do NOT proceed with offensive operations until home defense gate condition is satisfied.
+"""
+
+    else:  # threat_level == "high"
+        # Enemy within 3-4 parsecs - elevated urgency
+        urgency_msg = f"""
+
+DEFENSIVE URGENCY ALERT (HIGH):
+========================
+ELEVATED THREAT: Enemy forces detected {nearest_enemy} parsecs from your home star.
+Current home garrison: {home_garrison} ships.
+
+REQUIRED ACTIONS:
+1. Calculate max enemy strike force from stars within 4 parsecs of home
+2. Ensure home garrison > enemy potential strike + 2 ships buffer
+3. If home garrison insufficient: adjust force deployment to prioritize home defense
+4. Monitor enemy movements and prepare counter-measures
+
+The enemy can reach your home in {nearest_enemy} turns. Losing your home = instant defeat.
+Balance offensive ambitions with defensive requirements. Verify gate condition before major offensives.
+"""
+
+    return urgency_msg
+
+
+def inject_threat_vector_analysis(threat_vectors: list[dict]) -> str:
+    """Generate dynamic threat analysis prompt based on pre-calculated threat vectors.
+
+    This middleware function converts the threat_vectors data from observation
+    into actionable prompts that the LLM cannot ignore. It amplifies critical
+    threats and provides specific defensive requirements.
+
+    Args:
+        threat_vectors: List of threat vector dicts from observation
+
+    Returns:
+        Additional prompt text injected into system context when threats exist
+    """
+    if not threat_vectors:
+        return ""
+
+    # Count threats by severity
+    critical_threats = [t for t in threat_vectors if t.get("threat_severity") == "critical"]
+    high_threats = [t for t in threat_vectors if t.get("threat_severity") == "high"]
+
+    # Build urgency message
+    urgency_lines = []
+
+    if critical_threats:
+        urgency_lines.append("\nCRITICAL THREAT ALERT:")
+        urgency_lines.append("=" * 50)
+        for threat in critical_threats:
+            urgency_lines.append(
+                f"\nENEMY POSITION: {threat['enemy_star_name']} ({threat['enemy_star_id']}) "
+                f"- {threat['distance_to_home']} parsecs from home"
+            )
+            urgency_lines.append(f"  Estimated Force: {threat['estimated_ships']} ships")
+            urgency_lines.append(f"  Can Arrive: Turn {threat['estimated_arrival_turn']}")
+            urgency_lines.append(
+                f"  Required Home Garrison: {threat['required_home_garrison']} ships"
+            )
+            urgency_lines.append(f"  Analysis: {threat['explanation']}")
+
+        urgency_lines.append(
+            "\nIMMEDIATE ACTION REQUIRED: Verify your home garrison meets or exceeds the "
+            "required defense level. If insufficient, IMMEDIATELY redirect forces to home. "
+            "Losing home = instant defeat regardless of other achievements."
+        )
+
+    elif high_threats:
+        urgency_lines.append("\nHIGH THREAT ALERT:")
+        urgency_lines.append("=" * 50)
+        for threat in high_threats:
+            urgency_lines.append(
+                f"\nENEMY POSITION: {threat['enemy_star_name']} ({threat['enemy_star_id']}) "
+                f"- {threat['distance_to_home']} parsecs from home"
+            )
+            urgency_lines.append(f"  Estimated Force: {threat['estimated_ships']} ships")
+            urgency_lines.append(f"  Can Arrive: Turn {threat['estimated_arrival_turn']}")
+            urgency_lines.append(
+                f"  Required Home Garrison: {threat['required_home_garrison']} ships"
+            )
+
+        urgency_lines.append(
+            "\nRECOMMENDED ACTION: Ensure home garrison exceeds threat requirements. "
+            "Consider pre-emptive strikes or defensive reinforcements."
+        )
+
+    # Add summary of all threats
+    if len(threat_vectors) > len(critical_threats) + len(high_threats):
+        other_count = len(threat_vectors) - len(critical_threats) - len(high_threats)
+        urgency_lines.append(
+            f"\nAdditional threats detected: {other_count} medium/low priority enemy positions. "
+            "See active_threat_vectors in observation for full details."
+        )
+
+    return "\n".join(urgency_lines) if urgency_lines else ""
+
+
 def enhance_observation_context(observation: dict, game_context: GameContext) -> str:
     """Enhance observation with contextual insights.
 

@@ -10,8 +10,6 @@ from typing import Any
 
 from pydantic import ValidationError
 
-logger = logging.getLogger(__name__)
-
 from ..engine.combat import resolve_combat
 from ..models.game import Game
 from ..models.order import Order
@@ -32,7 +30,10 @@ from .tool_models import (
     RebellionReport,
     StarObservation,
     ThreatAnalysisOutput,
+    ThreatVector,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AgentTools:
@@ -157,6 +158,169 @@ class AgentTools:
             return winner_role == "attacker"
         else:  # pvp
             return winner_role is not None
+
+    def _calculate_threat_vectors(
+        self, home_star_obj, current_turn: int, enemy_stars: list[dict]
+    ) -> list[ThreatVector]:
+        """Calculate threat vectors from enemy positions to home star.
+
+        This function analyzes all known enemy positions and calculates:
+        - Distance to home
+        - Estimated enemy force at that position
+        - Time to arrival
+        - Required home defenses
+        - Threat severity
+
+        Args:
+            home_star_obj: Home star object
+            current_turn: Current turn number
+            enemy_stars: List of dicts with enemy star data {star_obj, last_seen_turn, ru}
+
+        Returns:
+            List of ThreatVector objects, sorted by threat severity (critical first)
+        """
+        threats = []
+
+        for enemy_data in enemy_stars:
+            enemy_star = enemy_data["star_obj"]
+            last_seen_turn = enemy_data.get("last_seen_turn", current_turn)
+            known_ru = enemy_data.get("known_ru")
+
+            # Calculate distance to home
+            distance = chebyshev_distance(
+                enemy_star.x, enemy_star.y, home_star_obj.x, home_star_obj.y
+            )
+
+            # Estimate enemy production (assume RU = production, or default to 2 if unknown)
+            estimated_production = known_ru if known_ru is not None else 2
+
+            # Estimate current ships at enemy star using capture history
+            # This fixes the bug where we assumed 1 survivor, which violates combat rules
+            capture_survivors = None
+            turns_since_capture = 0
+
+            # Search combat history for the actual capture event
+            # combats_history stores last N turns, oldest to newest (index 0 = oldest)
+            # When we reverse, index 0 = newest (most recent), index N-1 = oldest
+            for turns_ago, turn_combats in enumerate(reversed(self.game.combats_history)):
+                for combat in turn_combats:
+                    if (
+                        combat["star_id"] == enemy_star.id
+                        and combat.get("control_after") == self.opponent_id
+                    ):
+                        # Found the capture event - extract actual survivor count
+                        capture_survivors = combat.get("attacker_survivors")
+                        # Calculate turns since capture
+                        # turns_ago=0 means most recent turn in history
+                        # turns_ago=N-1 means oldest turn in history
+                        # But history may not go back to turn 0, so we need to account for that
+                        # If history has 5 entries and we're at turn 10:
+                        # - reversed()[0] = turn 10 (0 turns ago)
+                        # - reversed()[1] = turn 9 (1 turn ago)
+                        # - reversed()[4] = turn 6 (4 turns ago)
+                        turns_since_capture = turns_ago
+                        break
+                if capture_survivors is not None:
+                    break
+
+            # Calculate estimated force based on whether we found capture data
+            if capture_survivors is not None:
+                # Use actual survivor count from combat history
+                estimated_ships = capture_survivors + (turns_since_capture * estimated_production)
+            else:
+                # Fallback: estimate based on defender count using combat rules
+                # Combat rules: (N+1) attackers beats N defenders, attacker loses ceil(N/2)
+                # So survivors = attackers_sent - ceil(defenders/2)
+                if known_ru is not None:
+                    # For NPC stars, defenders = RU
+                    # Minimum attackers needed = RU + 1
+                    # Losses = ceil(RU / 2)
+                    # Estimated survivors = (RU + 1) - ceil(RU / 2)
+                    import math
+
+                    min_attackers = known_ru + 1
+                    expected_losses = math.ceil(known_ru / 2)
+                    estimated_survivors = min_attackers - expected_losses
+                else:
+                    # Conservative default when we have no information
+                    estimated_survivors = 2
+
+                turns_elapsed = current_turn - last_seen_turn
+                estimated_ships = estimated_survivors + (turns_elapsed * estimated_production)
+
+            # Calculate arrival turn if enemy sends fleet now
+            estimated_arrival = current_turn + distance
+
+            # Calculate required garrison (N+1 to beat N attackers)
+            required_garrison = estimated_ships + 1
+
+            # Classify threat severity
+            if distance <= 2:
+                severity = "critical"
+            elif distance <= 4:
+                severity = "high"
+            elif distance <= 6:
+                severity = "medium"
+            else:
+                severity = "low"
+
+            # Generate explanation based on estimation method
+            ru_text = f"{known_ru} RU" if known_ru is not None else "unknown RU (estimating 2)"
+            if capture_survivors is not None:
+                # We have actual capture data
+                explanation = (
+                    f"Enemy star {enemy_star.id} ({enemy_star.name}) is {distance} parsecs from home. "
+                    f"Star has {ru_text}, producing ~{estimated_production} ships/turn. "
+                    f"Enemy captured this star {turns_since_capture} turns ago with {capture_survivors} survivors. "
+                    f"Estimated {estimated_ships} ships now "
+                    f"({capture_survivors} base + {turns_since_capture} turns × {estimated_production} production). "
+                    f"Could reach home on T{estimated_arrival}. "
+                    f"Requires {required_garrison} home garrison to defend."
+                )
+            else:
+                # Using fallback estimation
+                turns_elapsed = current_turn - last_seen_turn
+                if known_ru is not None:
+                    explanation = (
+                        f"Enemy star {enemy_star.id} ({enemy_star.name}) is {distance} parsecs from home. "
+                        f"Star has {ru_text}, producing ~{estimated_production} ships/turn. "
+                        f"Estimated {estimated_survivors} survivors after capture (combat rules: {known_ru}+1 attackers - {expected_losses} losses). "
+                        f"Last seen T{last_seen_turn}, estimated {estimated_ships} ships now "
+                        f"({estimated_survivors} base + {turns_elapsed} turns × {estimated_production} production). "
+                        f"Could reach home on T{estimated_arrival}. "
+                        f"Requires {required_garrison} home garrison to defend."
+                    )
+                else:
+                    explanation = (
+                        f"Enemy star {enemy_star.id} ({enemy_star.name}) is {distance} parsecs from home. "
+                        f"Star has {ru_text}, producing ~{estimated_production} ships/turn. "
+                        f"Last seen T{last_seen_turn}, estimated {estimated_ships} ships now "
+                        f"(estimated {estimated_survivors} base + {turns_elapsed} turns × {estimated_production} production). "
+                        f"Could reach home on T{estimated_arrival}. "
+                        f"Requires {required_garrison} home garrison to defend."
+                    )
+
+            threats.append(
+                ThreatVector(
+                    enemy_star_id=enemy_star.id,
+                    enemy_star_name=enemy_star.name,
+                    distance_to_home=distance,
+                    known_enemy_ru=known_ru,
+                    estimated_enemy_production=estimated_production,
+                    last_seen_turn=last_seen_turn,
+                    estimated_ships=estimated_ships,
+                    estimated_arrival_turn=estimated_arrival,
+                    required_home_garrison=required_garrison,
+                    threat_severity=severity,
+                    explanation=explanation,
+                )
+            )
+
+        # Sort by severity (critical > high > medium > low), then by distance (closer first)
+        severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        threats.sort(key=lambda t: (severity_order[t.threat_severity], t.distance_to_home))
+
+        return threats
 
     def get_observation(self) -> dict[str, Any]:
         """Get Player 2's current game state observation.
@@ -388,6 +552,47 @@ class AgentTools:
             avg_fleet_size=round(avg_fleet_size, 1),
         )
 
+        # Calculate threat vectors from enemy positions
+        # Build list of enemy stars with metadata for threat calculation
+        enemy_star_data = []
+        for star in self.game.stars:
+            if star.owner == self.opponent_id:
+                # Determine when we last observed this star
+                # Check if star is in visited set (we've seen it)
+                visited = star.id in self.player.visited_stars
+                last_seen = self.game.turn if visited else None
+
+                # Try to find when enemy captured it from combat history
+                for turn_combats in reversed(self.game.combats_history):
+                    for combat in turn_combats:
+                        if (
+                            combat["star_id"] == star.id
+                            and combat.get("control_after") == self.opponent_id
+                        ):
+                            last_seen = combat.get("turn", self.game.turn)
+                            break
+                    if last_seen:
+                        break
+
+                # Fallback: assume we just discovered it this turn
+                if last_seen is None:
+                    last_seen = self.game.turn
+
+                enemy_star_data.append(
+                    {
+                        "star_obj": star,
+                        "last_seen_turn": last_seen,
+                        "known_ru": star.base_ru if visited else None,
+                    }
+                )
+
+        # Calculate threats (only if enemy stars exist)
+        threat_vectors = []
+        if enemy_star_data and home_star_obj:
+            threat_vectors = self._calculate_threat_vectors(
+                home_star_obj, self.game.turn, enemy_star_data
+            )
+
         # Create validated output
         output = ObservationOutput(
             turn=self.game.turn,
@@ -402,6 +607,7 @@ class AgentTools:
             rebellions_last_turn=rebellions,
             hyperspace_losses_last_turn=hyperspace_losses,
             production_report=production,
+            active_threat_vectors=threat_vectors,
         )
 
         return output.model_dump()

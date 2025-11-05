@@ -1,1 +1,2 @@
 - Always use uv for package management and for running any programs or tests.
+- Remember that all coding tasks should be delegated. Game coding should be given to the game coding agent. LLM/Agent coding should be given to the langchain agent.

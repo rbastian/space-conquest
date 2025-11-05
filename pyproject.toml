@@ -36,7 +36,7 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
-ignore = []
+ignore = ["E501"]  # Allow long lines in prompt strings for LLM readability
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
