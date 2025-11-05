@@ -15,6 +15,7 @@ from src.engine.turn_executor import TurnExecutor
 from src.interface.display import DisplayManager
 from src.interface.human_player import HumanPlayer
 from src.models.game import Game
+from src.models.order import Order
 from src.utils.serialization import load_game, save_game
 
 
@@ -44,16 +45,8 @@ class GameOrchestrator:
             self.game.p2_model_id = p2_controller.client.model_id
 
     def run(self) -> Game:
-        """Main game loop.
-
-        Executes turns in the correct phase order:
-        1. Phases 1-3: Movement, Combat, Victory (before display)
-        2. Phase 4: Display and Order Collection
-        3. Phase 5: Production
-
-        Returns:
-            Final game state with winner set
-        """
+        """Main game loop."""
+        # Show welcome message
         if not self.use_tui:
             print("\n" + "=" * 60)
             print("Space Conquest")
@@ -64,51 +57,18 @@ class GameOrchestrator:
 
         try:
             while not self.game.winner:
-                # Execute Phases 1-3: Movement, Combat, Victory Check
-                # This happens BEFORE displaying state to players
-                try:
-                    self.game, combat_events, hyperspace_losses = (
-                        self.turn_executor.execute_phases_1_to_3(self.game)
-                    )
-                    # Store events for display
-                    self.last_combat_events = combat_events
-                    self.last_hyperspace_losses = hyperspace_losses
-                except Exception as e:
-                    print(f"Error executing phases 1-3: {e}")
-                    print("Game cannot continue. Exiting...")
-                    sys.exit(1)
+                # Pre-turn: movement, combat, rebellions (BEFORE player sees state)
+                self._execute_pre_turn_logic()
 
-                # Check for victory (phases 1-3 may have triggered victory)
                 if self.game.winner:
-                    self._show_victory(
-                        combat_events, hyperspace_losses, []
-                    )
+                    self._show_victory()
                     break
 
-                # Phase 4: Display and Order Collection
-                # Now players see the RESULTS of movement and combat
-                orders = {}
-                for pid, controller in self.players.items():
-                    # Get orders from this player (display happens in get_orders)
-                    try:
-                        orders[pid] = controller.get_orders(self.game)
-                    except KeyboardInterrupt:
-                        print("\nGame interrupted. Exiting...")
-                        sys.exit(0)
-                    except Exception as e:
-                        print(f"Error getting orders from {pid}: {e}")
-                        orders[pid] = []
+                # Order collection: players see state and give orders
+                orders = self._collect_player_orders()
 
-                # Execute Phase 5: Production
-                try:
-                    self.game, rebellion_events = (
-                        self.turn_executor.execute_phases_4_to_5(self.game, orders)
-                    )
-                    self.last_rebellion_events = rebellion_events
-                except Exception as e:
-                    print(f"Error executing phases 4-5: {e}")
-                    print("Game cannot continue. Exiting...")
-                    sys.exit(1)
+                # Post-turn: process orders, production
+                self._execute_post_turn_logic(orders)
 
         except KeyboardInterrupt:
             print("\n\nGame interrupted by user. Exiting...")
@@ -116,17 +76,68 @@ class GameOrchestrator:
 
         return self.game
 
-    def _show_victory(self, combat_events, hyperspace_losses, rebellion_events) -> None:
-        """Display enhanced victory message.
+    def _execute_pre_turn_logic(self):
+        """Execute pre-turn game logic (movement, combat, rebellions, victory check).
+
+        This runs BEFORE players see the game state. After this, turn counter increments.
+
+        Updates:
+            - self.last_combat_events
+            - self.last_hyperspace_losses
+            - self.last_rebellion_events
+        """
+        try:
+            self.game, combat_events, hyperspace_losses, rebellion_events = (
+                self.turn_executor.execute_pre_turn_logic(self.game)
+            )
+            self.last_combat_events = combat_events
+            self.last_hyperspace_losses = hyperspace_losses
+            self.last_rebellion_events = rebellion_events
+        except Exception as e:
+            print(f"Error executing pre-turn logic: {e}")
+            print("Game cannot continue. Exiting...")
+            sys.exit(1)
+
+    def _collect_player_orders(self) -> dict[str, list[Order]]:
+        """Collect orders from both players.
+
+        Returns:
+            Dictionary mapping player ID to list of orders
+        """
+        orders = {}
+        for pid, controller in self.players.items():
+            try:
+                orders[pid] = controller.get_orders(self.game)
+            except KeyboardInterrupt:
+                raise  # Re-raise to be caught by outer try/except
+            except Exception as e:
+                print(f"Error getting orders from {pid}: {e}")
+                orders[pid] = []
+        return orders
+
+    def _execute_post_turn_logic(self, orders: dict[str, list[Order]]):
+        """Execute post-turn game logic (order processing, production).
+
+        This runs AFTER players submit orders.
 
         Args:
-            combat_events: Combat events from the final turn
-            hyperspace_losses: Hyperspace losses from the final turn
-            rebellion_events: Rebellion events from the final turn
+            orders: Dictionary mapping player ID to list of orders
         """
-        # Use the enhanced victory screen
+        try:
+            self.game = self.turn_executor.execute_post_turn_logic(self.game, orders)
+        except Exception as e:
+            print(f"Error executing post-turn logic: {e}")
+            print("Game cannot continue. Exiting...")
+            sys.exit(1)
+
+    def _show_victory(self) -> None:
+        """Display enhanced victory message."""
+        # Use the enhanced victory screen with stored events
         self.display.show_enhanced_victory(
-            self.game, combat_events, hyperspace_losses, rebellion_events
+            self.game,
+            self.last_combat_events,
+            self.last_hyperspace_losses,
+            self.last_rebellion_events,
         )
 
 
@@ -182,9 +193,7 @@ Examples:
         default=42,
         help="Random seed for map generation (default: 42)",
     )
-    parser.add_argument(
-        "--load", type=str, metavar="FILE", help="Load game from JSON file"
-    )
+    parser.add_argument("--load", type=str, metavar="FILE", help="Load game from JSON file")
     parser.add_argument(
         "--save",
         type=str,
@@ -248,6 +257,7 @@ Examples:
     if args.mode == "hvh":
         if args.tui:
             from src.interface.tui_player import TUIPlayer
+
             p1 = TUIPlayer("p1")
             p2 = TUIPlayer("p2")
         else:
@@ -255,9 +265,12 @@ Examples:
             p2 = HumanPlayer("p2")
     elif args.mode == "hvl":
         model_display = args.model or f"{args.provider} default"
-        print(f"Initializing Human vs LLM game ({args.provider} provider, model: {model_display})...")
+        print(
+            f"Initializing Human vs LLM game ({args.provider} provider, model: {model_display})..."
+        )
         if args.tui:
             from src.interface.tui_player import TUIPlayer
+
             p1 = TUIPlayer("p1")
         else:
             p1 = HumanPlayer("p1")
