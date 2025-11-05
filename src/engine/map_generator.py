@@ -1,16 +1,12 @@
 """Star map generation logic with balanced quadrant distribution."""
 
-from typing import List, Tuple
 
 from ..models import Game, Player, Star
 from ..utils import (
     GRID_X,
     GRID_Y,
-    HOME_DISTANCE_RANGE,
     HOME_RU,
-    NUM_STARS,
     GameRNG,
-    chebyshev_distance,
 )
 
 # Fixed star ID to name mapping (deterministic)
@@ -68,15 +64,16 @@ def generate_map(seed: int) -> Game:
 
     Algorithm:
     1. Place 2 home stars (0-3 parsecs from corners, using Chebyshev distance)
-    2. Place 14 NPC stars using balanced quadrant distribution:
+    2. Randomly assign which player gets which corner (deterministic based on seed)
+    3. Place 14 NPC stars using balanced quadrant distribution:
        - Q1 (NW): 4 NPC stars with RU {1,2,2,3} = 8 RU
        - Q2 (NE): 3 NPC stars with RU {1,2,3} = 6 RU
        - Q3 (SW): 3 NPC stars with RU {1,2,3} = 6 RU
        - Q4 (SE): 4 NPC stars with RU {1,2,2,3} = 8 RU
-    3. Shuffle star IDs (A-P) and assign to stars in generation order
-    4. Assign star names deterministically based on star ID
-    5. Initialize NPC ships = base_ru for each NPC star
-    6. Create initial player objects with fog-of-war
+    4. Shuffle star IDs (A-P) and assign to stars in generation order
+    5. Assign star names deterministically based on star ID
+    6. Initialize NPC ships = base_ru for each NPC star
+    7. Create initial player objects with fog-of-war
 
     Args:
         seed: RNG seed for deterministic map generation
@@ -87,13 +84,33 @@ def generate_map(seed: int) -> Game:
     rng = GameRNG(seed)
 
     # Track occupied cells to avoid collisions
-    occupied_cells: set[Tuple[int, int]] = set()
+    occupied_cells: set[tuple[int, int]] = set()
 
-    # Place home stars (0-3 parsecs from corners)
-    p1_home = _place_home_star_in_corner(rng, corner=(0, 0), max_dist=3, occupied_cells=occupied_cells)
+    # Define the two corners
+    corner_a = (0, 0)  # Upper-left
+    corner_b = (GRID_X - 1, GRID_Y - 1)  # Lower-right
+
+    # Randomly assign which player gets which corner (deterministic based on seed)
+    # 0 = p1 gets corner_a, p2 gets corner_b
+    # 1 = p1 gets corner_b, p2 gets corner_a
+    corner_assignment = rng.randint(0, 1)
+
+    if corner_assignment == 0:
+        p1_corner = corner_a
+        p2_corner = corner_b
+    else:
+        p1_corner = corner_b
+        p2_corner = corner_a
+
+    # Place home stars at assigned corners
+    p1_home = _place_home_star_in_corner(
+        rng, corner=p1_corner, max_dist=3, occupied_cells=occupied_cells
+    )
     occupied_cells.add(p1_home)
 
-    p2_home = _place_home_star_in_corner(rng, corner=(GRID_X - 1, GRID_Y - 1), max_dist=3, occupied_cells=occupied_cells)
+    p2_home = _place_home_star_in_corner(
+        rng, corner=p2_corner, max_dist=3, occupied_cells=occupied_cells
+    )
     occupied_cells.add(p2_home)
 
     # Generate NPC stars by quadrant with balanced RU distribution
@@ -121,7 +138,7 @@ def generate_map(seed: int) -> Game:
     rng.shuffle(star_ids)
 
     # Create stars list
-    stars: List[Star] = []
+    stars: list[Star] = []
 
     # Add p1 home star (first star in generation order)
     p1_star_id = star_ids[0]
@@ -184,7 +201,7 @@ def generate_map(seed: int) -> Game:
         fleets=[],
     )
 
-    # Create game object
+    # Create game object with corner assignments for replay analysis
     game = Game(
         seed=seed,
         turn=0,
@@ -195,6 +212,7 @@ def generate_map(seed: int) -> Game:
         winner=None,
         turn_history=[],
         fleet_counter={"p1": 0, "p2": 0},
+        corner_assignments={"p1": p1_corner, "p2": p2_corner},
     )
 
     return game
@@ -202,10 +220,10 @@ def generate_map(seed: int) -> Game:
 
 def _place_home_star_in_corner(
     rng: GameRNG,
-    corner: Tuple[int, int],
+    corner: tuple[int, int],
     max_dist: int,
-    occupied_cells: set[Tuple[int, int]],
-) -> Tuple[int, int]:
+    occupied_cells: set[tuple[int, int]],
+) -> tuple[int, int]:
     """Place a home star within max_dist of corner.
 
     Args:
@@ -240,10 +258,10 @@ def _place_home_star_in_corner(
 
 def _find_random_cell_in_quadrant(
     rng: GameRNG,
-    x_range: Tuple[int, int],
-    y_range: Tuple[int, int],
-    occupied: set[Tuple[int, int]],
-) -> Tuple[int, int]:
+    x_range: tuple[int, int],
+    y_range: tuple[int, int],
+    occupied: set[tuple[int, int]],
+) -> tuple[int, int]:
     """Find random unoccupied cell in quadrant.
 
     Args:

@@ -29,16 +29,17 @@ Game emphasizes deterministic combat, fog-of-war intelligence, and simultaneous 
 ### Quadrant Structure
 The 12×10 board is divided into 4 equal quadrants to ensure balanced star distribution:
 
-- **Q1 (Northwest)**: x ∈ [0,5], y ∈ [0,4] (30 cells) - P1 home region
-- **Q2 (Northeast)**: x ∈ [6,11], y ∈ [0,4] (30 cells) - Neutral
-- **Q3 (Southwest)**: x ∈ [0,5], y ∈ [5,9] (30 cells) - Neutral
-- **Q4 (Southeast)**: x ∈ [6,11], y ∈ [5,9] (30 cells) - P2 home region
+- **Q1 (Northwest)**: x ∈ [0,5], y ∈ [0,4] (30 cells)
+- **Q2 (Northeast)**: x ∈ [6,11], y ∈ [0,4] (30 cells)
+- **Q3 (Southwest)**: x ∈ [0,5], y ∈ [5,9] (30 cells)
+- **Q4 (Southeast)**: x ∈ [6,11], y ∈ [5,9] (30 cells)
 
 ### Star Distribution by Quadrant
-- **Q1 (P1 region)**: 4 stars total (1 home + 3 NPC)
-- **Q2 (Neutral)**: 3 NPC stars
-- **Q3 (Neutral)**: 3 NPC stars
-- **Q4 (P2 region)**: 4 stars total (1 home + 3 NPC)
+- **Q1 (Northwest)**: 4 NPC stars (8 RU total: {1,2,2,3})
+- **Q2 (Northeast)**: 3 NPC stars (6 RU total: {1,2,3})
+- **Q3 (Southwest)**: 3 NPC stars (6 RU total: {1,2,3})
+- **Q4 (Southeast)**: 4 NPC stars (8 RU total: {1,2,2,3})
+- **Home stars**: One player home star in Q1 corner, one in Q4 corner (randomly assigned)
 
 **Rationale**:
 - Guarantees balanced expansion opportunities for both players
@@ -48,13 +49,16 @@ The 12×10 board is divided into 4 equal quadrants to ensure balanced star distr
 - Preserves randomness within quadrants for replayability
 
 ### Home Star Placement
-- Player 1 Home Star: **0–3 parsecs** (Chebyshev distance) from corner (0,0)
-  - 16 possible cells in upper-left region
-  - Placed randomly within this constraint (using seeded RNG)
-- Player 2 Home Star: **0–3 parsecs** (Chebyshev distance) from corner (11,9)
-  - 16 possible cells in lower-right region
-  - Placed randomly within this constraint (using seeded RNG)
-- **Guaranteed separation**: ≥7 parsecs minimum between player home stars
+- Two home stars placed in opposite corners of the board
+- Corner assignment is **randomized per seed** for game variety:
+  - Corner A (0,0): upper-left corner
+  - Corner B (11,9): lower-right corner
+  - Random assignment determines which player starts in which corner
+- Each home star: **0–3 parsecs** (Chebyshev distance) from assigned corner
+  - 16 possible cells within placement region
+  - Exact position randomly selected within constraint (using seeded RNG)
+- **Guaranteed separation**: ≥6 parsecs minimum between player home stars
+- **Determinism**: Same seed produces same corner assignments and positions
 - **Home region guarantee**: Each home region (3-parsec radius) contains 3-4 total stars (including home star)
   - This ensures 2-3 NPC targets within 3 parsecs of each home
   - Prevents trivial home star identification

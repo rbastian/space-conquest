@@ -22,6 +22,8 @@ from .langchain_client import LangChainClient, MockLangChainClient
 from .middleware import (
     filter_tools_by_game_state,
     handle_tool_error,
+    inject_defensive_urgency,
+    inject_threat_vector_analysis,
     reset_error_tracking,
     trim_message_history,
     update_game_context_from_observation,
@@ -163,8 +165,21 @@ class LangGraphPlayer:
                 threat_level=game_context.get("threat_level"),
                 turn=game_context.get("turn"),
             )
+
+            # Inject defensive urgency if threat is elevated
+            urgency_injection = inject_defensive_urgency(game_context)
+            if urgency_injection:
+                system_prompt += urgency_injection
         else:
             system_prompt = get_system_prompt(verbose=self.verbose)
+
+        # Inject threat vector analysis if available (from previous observation)
+        threat_vectors = state.get("_threat_vectors", [])
+        if threat_vectors:
+            threat_injection = inject_threat_vector_analysis(threat_vectors)
+            if threat_injection:
+                logger.debug("Injecting threat vector analysis into system prompt")
+                system_prompt += "\n\n" + threat_injection
 
         # Filter tools based on game state
         available_tool_names = filter_tools_by_game_state(state)
@@ -271,6 +286,7 @@ class LangGraphPlayer:
         # Execute each tool
         tool_results = []
         observation_data = None
+        threat_vectors = None
         orders_submitted = False
 
         # Critical tools that should halt execution on failure
@@ -300,6 +316,12 @@ class LangGraphPlayer:
                 # Store observation for context update
                 if tool_name == "get_observation":
                     observation_data = result
+                    # Extract threat vectors for middleware injection
+                    threat_vectors = result.get("active_threat_vectors", [])
+                    if threat_vectors:
+                        logger.info(
+                            f"Detected {len(threat_vectors)} threat vector(s) from enemy positions"
+                        )
 
                 # Track if orders were submitted
                 if tool_name == "submit_orders":
@@ -376,11 +398,17 @@ class LangGraphPlayer:
         # Reset error tracking on successful execution
         state = reset_error_tracking(state)
 
-        return {
+        # Store threat vectors in state for next LLM call (if any)
+        updated_state = {
             **state,
             "game_context": updated_game_context,
             "messages": [*state["messages"], tool_result_message],
         }
+
+        if threat_vectors is not None:
+            updated_state["_threat_vectors"] = threat_vectors
+
+        return updated_state
 
     def _should_continue(self, state: AgentState) -> Literal["continue", "end"]:
         """Conditional routing: determine if we should continue or end.
