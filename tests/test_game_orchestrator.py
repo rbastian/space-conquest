@@ -1,7 +1,8 @@
 """Tests for Game Orchestrator - Bug Fix Verification."""
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
 
 from game import GameOrchestrator
 from src.models.game import Game
@@ -86,9 +87,7 @@ def test_execute_turn_unpacks_tuple_correctly():
         )
 
         # Verify game state is accessible
-        assert hasattr(result_game, "winner"), (
-            "Game object should have winner attribute"
-        )
+        assert hasattr(result_game, "winner"), "Game object should have winner attribute"
         assert result_game.turn == 1, "Turn should have incremented"
 
     except AttributeError as e:
@@ -104,9 +103,7 @@ def test_orchestrator_stores_display_manager():
     orchestrator = GameOrchestrator(game, mock_p1, mock_p2)
 
     # Verify DisplayManager is initialized
-    assert hasattr(orchestrator, "display"), (
-        "Orchestrator should have display attribute"
-    )
+    assert hasattr(orchestrator, "display"), "Orchestrator should have display attribute"
     assert orchestrator.display is not None, "Display manager should be initialized"
 
 
@@ -161,10 +158,10 @@ def test_display_methods_called_after_turn_execution(monkeypatch):
         fleet_id="p1-001", owner="p1", ships=3, origin="A", dest="B"
     )
 
-    # Mock the new split-phase methods
+    # Mock the new pre/post turn logic methods
     turn_count = [0]
 
-    def mock_execute_phases_1_to_3(game):
+    def mock_execute_pre_turn_logic(game):
         turn_count[0] += 1
         if turn_count[0] == 1:
             # First turn: return events and store them in game object
@@ -195,21 +192,21 @@ def test_display_methods_called_after_turn_execution(monkeypatch):
             }
             game.combats_last_turn = [combat_dict]
             game.hyperspace_losses_last_turn = [loss_dict]
-            game.turn += 1  # Increment turn (phases 1-3 do this)
-            return game, [mock_combat_event], [mock_hyperspace_loss]
+            game.rebellions_last_turn = []
+            game.turn += 1  # Increment turn (pre-turn logic does this)
+            return game, [mock_combat_event], [mock_hyperspace_loss], []
         else:
             # Second turn: set winner to exit loop
             game.winner = "p1"
             game.turn += 1
-            return game, [], []
+            return game, [], [], []
 
-    def mock_execute_phases_4_to_5(game, orders):
-        # Phase 4-5: Just return empty rebellion events
-        game.rebellions_last_turn = []
-        return game, []
+    def mock_execute_post_turn_logic(game, orders):
+        # Post-turn logic: Just return game
+        return game
 
-    orchestrator.turn_executor.execute_phases_1_to_3 = mock_execute_phases_1_to_3
-    orchestrator.turn_executor.execute_phases_4_to_5 = mock_execute_phases_4_to_5
+    orchestrator.turn_executor.execute_pre_turn_logic = mock_execute_pre_turn_logic
+    orchestrator.turn_executor.execute_post_turn_logic = mock_execute_post_turn_logic
 
     # Run the game (should execute two turns and exit)
     final_game = orchestrator.run()

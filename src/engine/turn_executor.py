@@ -224,8 +224,97 @@ class TurnExecutor:
     # Compose independent phases in the correct execution order
     # =========================================================================
 
+    def execute_pre_turn_logic(
+        self, game: Game
+    ) -> tuple[Game, list[CombatEvent], list[HyperspaceLoss], list[RebellionEvent]]:
+        """Execute pre-turn game logic: movement, combat, rebellions, victory check.
+
+        This runs BEFORE players see state. After this, turn counter increments.
+
+        Args:
+            game: Current game state
+
+        Returns:
+            Tuple of (updated game, combat events, hyperspace losses, rebellion events)
+            If game.winner is set, the game has ended
+        """
+        # Movement
+        game, hyperspace_losses = self._move_fleets(game)
+
+        # Combat
+        game, combat_events = self._resolve_combat(game)
+
+        # Rebellions
+        game, rebellion_events = self._process_rebellions(game)
+
+        # Victory check
+        game = self._check_victory(game)
+
+        # Increment turn counter
+        game.turn += 1
+
+        return game, combat_events, hyperspace_losses, rebellion_events
+
+    def execute_post_turn_logic(self, game: Game, orders: dict[str, list[Order]]) -> Game:
+        """Execute post-turn game logic: order processing, production.
+
+        This runs AFTER players submit orders.
+
+        Args:
+            game: Current game state (with turn already incremented)
+            orders: Dictionary mapping player ID to list of orders
+
+        Returns:
+            Updated game state
+        """
+        # Process orders
+        game = self._process_orders_wrapper(game, orders)
+
+        # Production
+        game = self._process_production_wrapper(game)
+
+        return game
+
+    # =========================================================================
+    # PRIVATE HELPER METHODS FOR NEW ORCHESTRATION
+    # These delegate to the existing phase methods
+    # =========================================================================
+
+    def _move_fleets(self, game: Game) -> tuple[Game, list[HyperspaceLoss]]:
+        """Execute fleet movement."""
+        return self.execute_phase_movement(game)
+
+    def _resolve_combat(self, game: Game) -> tuple[Game, list[CombatEvent]]:
+        """Resolve combat at all stars."""
+        return self.execute_phase_combat(game)
+
+    def _process_rebellions(self, game: Game) -> tuple[Game, list[RebellionEvent]]:
+        """Process rebellions at under-garrisoned stars."""
+        return self.execute_phase_rebellions(game)
+
+    def _check_victory(self, game: Game) -> Game:
+        """Check for victory conditions."""
+        return self.execute_phase_victory_check(game)
+
+    def _process_orders_wrapper(self, game: Game, orders: dict[str, list[Order]]) -> Game:
+        """Process player orders."""
+        return self.execute_phase_orders(game, orders)
+
+    def _process_production_wrapper(self, game: Game) -> Game:
+        """Process ship production."""
+        # Track which stars rebelled (no production for them)
+        rebelled_star_ids = {event["star"] for event in game.rebellions_last_turn}
+        game = process_production(game, rebelled_star_ids)
+        return game
+
+    # =========================================================================
+    # OLD ORCHESTRATION METHODS (kept for reference)
+    # =========================================================================
+
     def execute_pre_display_phases(self, game: Game) -> tuple[Game, PhaseResults]:
         """Execute phases 1-4 (before display/order collection).
+
+        DEPRECATED: Use execute_pre_turn_logic() instead.
 
         This orchestration method runs all phases that happen before players
         see the game state and submit orders. After these phases, the turn
@@ -271,6 +360,8 @@ class TurnExecutor:
     def execute_post_order_phases(self, game: Game, orders: dict[str, list[Order]]) -> Game:
         """Execute phases 6-7 (after order collection).
 
+        DEPRECATED: Use execute_post_turn_logic() instead.
+
         This orchestration method runs all phases that happen after players
         submit orders. These phases prepare the game state for the next turn.
 
@@ -295,49 +386,19 @@ class TurnExecutor:
         return game
 
     # =========================================================================
-    # BACKWARD COMPATIBILITY METHODS
-    # Wrappers for old method names to avoid breaking existing code
+    # BACKWARD COMPATIBILITY - DEPRECATED
+    # Old numbered phase methods for existing tests
     # =========================================================================
 
     def execute_phases_1_to_4(
         self, game: Game
     ) -> tuple[Game, list[CombatEvent], list[HyperspaceLoss], list[RebellionEvent]]:
-        """Execute phases 1-4: Movement, Combat, Rebellions, Victory Check.
-
-        BACKWARD COMPATIBILITY: This method wraps the new execute_pre_display_phases()
-        method to maintain the old return signature.
-
-        This should be called BEFORE displaying state and collecting orders.
-        After this returns, the turn counter will be incremented so the display
-        shows the correct turn number.
-
-        Args:
-            game: Current game state
-
-        Returns:
-            Tuple of (updated game state, combat events, hyperspace losses, rebellion events)
-            Note: If game.winner is set, the game has ended
-        """
-        game, results = self.execute_pre_display_phases(game)
-        return game, results.combat_events, results.hyperspace_losses, results.rebellion_events
+        """DEPRECATED: Use execute_pre_turn_logic() instead."""
+        return self.execute_pre_turn_logic(game)
 
     def execute_phases_6_to_7(self, game: Game, orders: dict[str, list[Order]]) -> Game:
-        """Execute phases 6-7: Order Processing and Production.
-
-        BACKWARD COMPATIBILITY: This method wraps the new execute_post_order_phases()
-        method to maintain the old method name.
-
-        This should be called AFTER phases 1-4 and AFTER collecting orders from players.
-
-        Args:
-            game: Current game state (with turn already incremented)
-            orders: Dictionary mapping player ID to list of orders
-                   e.g., {"p1": [Order(...), ...], "p2": [...]}
-
-        Returns:
-            Updated game state
-        """
-        return self.execute_post_order_phases(game, orders)
+        """DEPRECATED: Use execute_post_turn_logic() instead."""
+        return self.execute_post_turn_logic(game, orders)
 
     # Backward compatibility methods (renamed but same behavior)
     def execute_phases_1_to_3(
