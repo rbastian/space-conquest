@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPACE CONQUEST // TACTICAL COMMAND INTERFACE</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- CRT Screen Effect Overlay -->
+    <div class="crt-overlay"></div>
+    <div class="scanlines"></div>
+
+    <!-- Main Interface -->
+    <div class="command-interface">
+
+        <!-- Header Bar -->
+        <header class="command-header">
+            <div class="header-segment">
+                <span class="status-indicator pulse"></span>
+                <span class="system-label">TACTICAL COMMAND SYSTEM v2.4.7</span>
+            </div>
+            <div class="header-segment center">
+                <h1 class="title-main">SPACE CONQUEST</h1>
+            </div>
+            <div class="header-segment right">
+                <span class="turn-counter">TURN: <span id="turnNumber">001</span></span>
+                <span class="phase-indicator" id="phaseIndicator">ORDERS</span>
+            </div>
+        </header>
+
+        <!-- Main Content Grid -->
+        <div class="main-grid">
+
+            <!-- Left Panel: Star Map -->
+            <section class="panel map-panel">
+                <div class="panel-header">
+                    <h2>SECTOR MAP</h2>
+                    <div class="panel-controls">
+                        <button class="icon-btn" id="zoomIn">+</button>
+                        <button class="icon-btn" id="zoomOut">-</button>
+                        <button class="icon-btn" id="centerView">⊙</button>
+                    </div>
+                </div>
+                <div class="panel-content">
+                    <canvas id="starMap" width="800" height="800"></canvas>
+                    <div class="map-legend">
+                        <div class="legend-item">
+                            <span class="legend-marker player1"></span>
+                            <span>PLAYER 1 TERRITORY</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-marker player2"></span>
+                            <span>PLAYER 2 TERRITORY</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-marker neutral"></span>
+                            <span>NEUTRAL SPACE</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel: Star Details & Fleet Info -->
+            <section class="panel info-panel">
+                <div class="panel-header">
+                    <h2>TACTICAL DATA</h2>
+                    <div class="data-quality">
+                        <span class="signal-bar"></span>
+                        <span class="signal-bar"></span>
+                        <span class="signal-bar"></span>
+                        <span class="signal-bar dim"></span>
+                    </div>
+                </div>
+                <div class="panel-content scrollable">
+
+                    <!-- Controlled Stars -->
+                    <div class="data-section">
+                        <h3 class="section-title">YOUR HOLDINGS</h3>
+                        <div class="data-table">
+                            <table id="controlledStarsTable">
+                                <thead>
+                                    <tr>
+                                        <th>STAR</th>
+                                        <th>SHIPS</th>
+                                        <th>RU</th>
+                                        <th>STATUS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Active Fleets -->
+                    <div class="data-section">
+                        <h3 class="section-title">FLEETS IN TRANSIT</h3>
+                        <div class="data-table">
+                            <table id="fleetsTable">
+                                <thead>
+                                    <tr>
+                                        <th>ORIGIN</th>
+                                        <th>DEST</th>
+                                        <th>SHIPS</th>
+                                        <th>ETA</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- Bottom Panel: Command Terminal -->
+            <section class="panel terminal-panel">
+                <div class="panel-header">
+                    <h2>COMMAND TERMINAL</h2>
+                    <div class="terminal-indicators">
+                        <span class="indicator" id="rxIndicator">RX</span>
+                        <span class="indicator" id="txIndicator">TX</span>
+                    </div>
+                </div>
+                <div class="panel-content">
+                    <div class="terminal-output" id="terminalOutput">
+                        <div class="terminal-line system">
+                            <span class="prompt">&gt;&gt;</span> SYSTEM INITIALIZED
+                        </div>
+                        <div class="terminal-line system">
+                            <span class="prompt">&gt;&gt;</span> AWAITING ORDERS...
+                        </div>
+                    </div>
+                    <div class="terminal-input-wrapper">
+                        <span class="terminal-prompt">&gt;</span>
+                        <input
+                            type="text"
+                            id="terminalInput"
+                            class="terminal-input"
+                            placeholder="ENTER COMMAND..."
+                            autocomplete="off"
+                        >
+                    </div>
+                    <div class="terminal-help">
+                        <span class="help-item">MOVE &lt;ships&gt; FROM &lt;star&gt; TO &lt;star&gt;</span>
+                        <span class="help-separator">|</span>
+                        <span class="help-item">LIST</span>
+                        <span class="help-separator">|</span>
+                        <span class="help-item">STATUS</span>
+                        <span class="help-separator">|</span>
+                        <span class="help-item">DONE</span>
+                        <span class="help-separator">|</span>
+                        <span class="help-item">HELP</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Bottom Right: Orders Queue -->
+            <section class="panel orders-panel">
+                <div class="panel-header">
+                    <h2>QUEUED ORDERS</h2>
+                    <button class="clear-btn" id="clearOrders">CLEAR ALL</button>
+                </div>
+                <div class="panel-content scrollable">
+                    <div class="orders-list" id="ordersList">
+                        <div class="no-orders">
+                            <p>// NO ORDERS QUEUED</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel-footer">
+                    <button class="action-btn primary" id="submitTurn">
+                        <span class="btn-label">SUBMIT TURN</span>
+                        <span class="btn-indicator">▶</span>
+                    </button>
+                </div>
+            </section>
+
+        </div>
+
+        <!-- Event Log Overlay (slides in from right) -->
+        <aside class="event-log hidden" id="eventLog">
+            <div class="panel-header">
+                <h2>COMBAT REPORT</h2>
+                <button class="close-btn" id="closeEventLog">×</button>
+            </div>
+            <div class="panel-content scrollable">
+                <div id="eventLogContent">
+                    <!-- Populated by JS when events occur -->
+                </div>
+            </div>
+        </aside>
+
+    </div>
+
+    <!-- Hover Tooltip (positioned dynamically) -->
+    <div class="star-tooltip hidden" id="starTooltip"></div>
+
+    <script src="/static/game.js"></script>
+</body>
+</html>

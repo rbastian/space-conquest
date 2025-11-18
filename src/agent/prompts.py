@@ -16,6 +16,7 @@ CORE RULES (IMMUTABLE):
 - Production: Each star you control automatically produces ships each turn equal to its RU (Home=4 RU; NPC=1–3 RU). Production is automatic - no garrison required.
 - Ships move on an 8-direction grid (Chebyshev metric). Diagonals cost the same as orthogonal.
 - Hyperspace risk: each turn of travel has a 2% chance of destroying the entire fleet (binary outcome).
+- Fleets in hyperspace CANNOT be recalled: Once a fleet departs, it will arrive at its destination (or be destroyed by hyperspace). You cannot change its destination or return it to origin.
 - Combat: (N+1) attackers beats N defenders. Attacker loses ceil(N/2), winner takes the star.
 - NPC stars start with defenders equal to RU (1 RU = 1 defender, 2 RU = 2 defenders, 3 RU = 3 defenders).
 - Combat is simultaneous: fleets arriving on the same turn fight that turn.
@@ -129,21 +130,24 @@ def get_system_prompt(
         # Phase-specific guidance
         if game_phase == "early":
             prompt += (
-                "- EARLY GAME (T1-10): Aggressive expansion phase. Send all available ships from home "
-                "to capture nearby stars. Home is safe - opponent is distant and doesn't know your location. "
-                "Focus on rapid territorial growth over garrison maintenance.\n"
+                "- EARLY GAME (T1-10): Aggressive expansion phase. PRIMARY OBJECTIVE: Conquer as many stars as possible "
+                "to maximize RU production and ship output. Send all available ships from home to capture nearby stars. "
+                "Home is safe - opponent is distant (8+ parsecs away) and doesn't know your location. "
+                "The more stars you control early, the more ships you'll have for mid-game conflicts.\n"
             )
         elif game_phase == "mid":
             prompt += (
-                "- MID GAME (T11-30): Consolidation phase. Balance expansion with defense. "
-                "Maintain adequate garrisons on captured NPC stars (garrison >= RU). "
-                "Scout for enemy home star if not yet discovered. Prepare for conflict.\n"
+                "- MID GAME (T11-30): Contact with enemy has occurred. PRIMARY OBJECTIVE: Consolidate attack fleets and "
+                "push towards the enemy's home star. Even if you don't know exactly which star is their home, you know it's "
+                "on the opposite side of the map from yours. Maintain adequate garrisons on captured NPC stars (garrison >= RU) "
+                "while building concentrated strike forces. Create forward staging bases along the path to enemy territory.\n"
             )
         elif game_phase == "late":
             prompt += (
-                "- LATE GAME (T31+): Endgame phase. Focus on striking opponent's home star. "
-                "Concentrate forces for decisive attacks. Defend your home star with reserves. "
-                "Victory is near - execute your winning strategy.\n"
+                "- LATE GAME (T31+): Endgame decision point. IF YOU HAVE THE ADVANTAGE: Press the attack with concentrated "
+                "forces towards enemy home star. IF ENEMY HAS ADVANTAGE: Consolidate defenses around your home, maintain RU production, "
+                "and look for opportunities. Consider a surprise 'hail mary' attack if you're behind - a bold strike at their home "
+                "may be your only path to victory.\n"
             )
 
         # Threat-specific guidance
