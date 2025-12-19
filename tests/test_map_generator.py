@@ -237,18 +237,18 @@ class TestMapGenerator:
         assert game1.players["p2"].home_star == game2.players["p2"].home_star
 
     def test_star_letters_all_unique(self):
-        """Test that all 16 stars get unique letters A-P."""
+        """Test that all 18 stars get unique letters A-S (skipping Q)."""
         game = generate_map(42)
 
         # Collect all star IDs
         star_ids = [s.id for s in game.stars]
 
-        # Should have 16 unique IDs
-        assert len(star_ids) == 16
-        assert len(set(star_ids)) == 16
+        # Should have 18 unique IDs
+        assert len(star_ids) == 18
+        assert len(set(star_ids)) == 18
 
-        # All IDs should be from A-P
-        assert set(star_ids) == set("ABCDEFGHIJKLMNOP")
+        # All IDs should be from A-S (skipping Q)
+        assert set(star_ids) == set("ABCDEFGHIJKLMNOPRS")
 
     def test_quadrant_star_distribution(self):
         """Test that stars are distributed correctly across quadrants."""
@@ -261,10 +261,10 @@ class TestMapGenerator:
         q4_stars = [s for s in game.stars if 6 <= s.x <= 11 and 5 <= s.y <= 9]
 
         # Q1 and Q4 should have 5 total stars each (1 home + 4 NPC)
-        # Q2 and Q3 should have 3 NPC stars each
+        # Q2 and Q3 should have 4 NPC stars each
         # This depends on where home stars land, but we can verify total counts
         total_stars = len(q1_stars) + len(q2_stars) + len(q3_stars) + len(q4_stars)
-        assert total_stars == 16, f"Expected 16 stars total, got {total_stars}"
+        assert total_stars == 18, f"Expected 18 stars total, got {total_stars}"
 
     def test_quadrant_ru_balance(self):
         """Test that RU is balanced across quadrants."""
@@ -278,8 +278,8 @@ class TestMapGenerator:
 
         # Count NPC stars per quadrant
         assert len(q1_npc) == 4, f"Q1 should have 4 NPC stars, got {len(q1_npc)}"
-        assert len(q2_npc) == 3, f"Q2 should have 3 NPC stars, got {len(q2_npc)}"
-        assert len(q3_npc) == 3, f"Q3 should have 3 NPC stars, got {len(q3_npc)}"
+        assert len(q2_npc) == 4, f"Q2 should have 4 NPC stars, got {len(q2_npc)}"
+        assert len(q3_npc) == 4, f"Q3 should have 4 NPC stars, got {len(q3_npc)}"
         assert len(q4_npc) == 4, f"Q4 should have 4 NPC stars, got {len(q4_npc)}"
 
         # Calculate RU totals per quadrant
@@ -288,15 +288,15 @@ class TestMapGenerator:
         q3_ru = sum(s.base_ru for s in q3_npc)
         q4_ru = sum(s.base_ru for s in q4_npc)
 
-        # Q1 and Q4 should have 8 RU (1+2+2+3), Q2 and Q3 should have 6 RU (1+2+3)
+        # All quadrants should have 8 RU (1+2+2+3)
         assert q1_ru == 8, f"Q1 should have 8 NPC RU, got {q1_ru}"
-        assert q2_ru == 6, f"Q2 should have 6 NPC RU, got {q2_ru}"
-        assert q3_ru == 6, f"Q3 should have 6 NPC RU, got {q3_ru}"
+        assert q2_ru == 8, f"Q2 should have 8 NPC RU, got {q2_ru}"
+        assert q3_ru == 8, f"Q3 should have 8 NPC RU, got {q3_ru}"
         assert q4_ru == 8, f"Q4 should have 8 NPC RU, got {q4_ru}"
 
-        # Total NPC RU should be 28
+        # Total NPC RU should be 32
         total_npc_ru = q1_ru + q2_ru + q3_ru + q4_ru
-        assert total_npc_ru == 28, f"Total NPC RU should be 28, got {total_npc_ru}"
+        assert total_npc_ru == 32, f"Total NPC RU should be 32, got {total_npc_ru}"
 
     def test_quadrant_ru_values(self):
         """Test that each quadrant has the correct RU value distribution."""
@@ -316,13 +316,11 @@ class TestMapGenerator:
             [s.base_ru for s in game.stars if 6 <= s.x <= 11 and 5 <= s.y <= 9 and s.owner is None]
         )
 
-        # Q1 and Q4 should have {1, 2, 2, 3}
+        # All quadrants should have {1, 2, 2, 3}
         assert q1_npc == [1, 2, 2, 3], f"Q1 NPC RU should be [1,2,2,3], got {q1_npc}"
+        assert q2_npc == [1, 2, 2, 3], f"Q2 NPC RU should be [1,2,2,3], got {q2_npc}"
+        assert q3_npc == [1, 2, 2, 3], f"Q3 NPC RU should be [1,2,2,3], got {q3_npc}"
         assert q4_npc == [1, 2, 2, 3], f"Q4 NPC RU should be [1,2,2,3], got {q4_npc}"
-
-        # Q2 and Q3 should have {1, 2, 3}
-        assert q2_npc == [1, 2, 3], f"Q2 NPC RU should be [1,2,3], got {q2_npc}"
-        assert q3_npc == [1, 2, 3], f"Q3 NPC RU should be [1,2,3], got {q3_npc}"
 
     def test_home_stars_minimum_separation(self):
         """Test that home stars maintain minimum separation distance."""
@@ -355,14 +353,14 @@ class TestMapGenerator:
 
             # Every seed should have the same distribution
             assert len(q1_npc) == 4, f"Seed {seed}: Q1 should have 4 NPC stars"
-            assert len(q2_npc) == 3, f"Seed {seed}: Q2 should have 3 NPC stars"
-            assert len(q3_npc) == 3, f"Seed {seed}: Q3 should have 3 NPC stars"
+            assert len(q2_npc) == 4, f"Seed {seed}: Q2 should have 4 NPC stars"
+            assert len(q3_npc) == 4, f"Seed {seed}: Q3 should have 4 NPC stars"
             assert len(q4_npc) == 4, f"Seed {seed}: Q4 should have 4 NPC stars"
 
             # RU balance should be consistent
             assert sum(s.base_ru for s in q1_npc) == 8, f"Seed {seed}: Q1 should have 8 RU"
-            assert sum(s.base_ru for s in q2_npc) == 6, f"Seed {seed}: Q2 should have 6 RU"
-            assert sum(s.base_ru for s in q3_npc) == 6, f"Seed {seed}: Q3 should have 6 RU"
+            assert sum(s.base_ru for s in q2_npc) == 8, f"Seed {seed}: Q2 should have 8 RU"
+            assert sum(s.base_ru for s in q3_npc) == 8, f"Seed {seed}: Q3 should have 8 RU"
             assert sum(s.base_ru for s in q4_npc) == 8, f"Seed {seed}: Q4 should have 8 RU"
 
     def test_corner_assignment_randomization(self):

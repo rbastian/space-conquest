@@ -67,8 +67,8 @@ def test_departing_ships_do_not_defend_origin_star():
         "p2": [],
     }
 
-    game, combat_events_t1, hyperspace_losses_t1, rebellion_events_t1 = (
-        executor.execute_turn(game, orders_turn1)
+    game, combat_events_t1, hyperspace_losses_t1, rebellion_events_t1 = executor.execute_turn(
+        game, orders_turn1
     )
 
     # After Turn 1: Ships should be deducted immediately in Phase 4
@@ -87,8 +87,8 @@ def test_departing_ships_do_not_defend_origin_star():
         "p2": [Order(from_star="C", to_star="A", ships=3)],
     }
 
-    game, combat_events_t2, hyperspace_losses_t2, rebellion_events_t2 = (
-        executor.execute_turn(game, orders_turn2)
+    game, combat_events_t2, hyperspace_losses_t2, rebellion_events_t2 = executor.execute_turn(
+        game, orders_turn2
     )
 
     # After Turn 2: P1's fleet is still in transit, P2's fleet just created

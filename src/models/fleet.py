@@ -26,6 +26,4 @@ class Fleet:
         if self.ships <= 0:
             raise ValueError(f"Invalid ships: {self.ships} (must be > 0)")
         if self.dist_remaining < 0:
-            raise ValueError(
-                f"Invalid dist_remaining: {self.dist_remaining} (must be >= 0)"
-            )
+            raise ValueError(f"Invalid dist_remaining: {self.dist_remaining} (must be >= 0)")

@@ -35,7 +35,7 @@ class TUIPlayer:
 
         try:
             orders = app.run(mouse=False)
-        except Exception as e:
+        except Exception:
             # If the app was closed unexpectedly, treat as quit
             print("\nGame interrupted. Exiting...")
             sys.exit(0)

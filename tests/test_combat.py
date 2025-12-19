@@ -2,7 +2,6 @@
 
 import math
 
-
 from src.engine.combat import process_combat, resolve_combat
 from src.models.game import Game
 from src.models.player import Player

@@ -27,9 +27,7 @@ def test_hyperspace_loss_destroys_fleet():
 
     # Create stars
     star_a = Star(id="A", name="Altair", x=0, y=0, base_ru=4, owner="p1", npc_ships=0)
-    star_b = Star(
-        id="B", name="Bellatrix", x=5, y=5, base_ru=2, owner=None, npc_ships=2
-    )
+    star_b = Star(id="B", name="Bellatrix", x=5, y=5, base_ru=2, owner=None, npc_ships=2)
     game.stars = [star_a, star_b]
 
     # Create players
@@ -82,9 +80,7 @@ def test_fleet_movement_decrements_distance():
 
     # Create stars
     star_a = Star(id="A", name="Altair", x=0, y=0, base_ru=4, owner="p1", npc_ships=0)
-    star_b = Star(
-        id="B", name="Bellatrix", x=2, y=1, base_ru=2, owner=None, npc_ships=2
-    )
+    star_b = Star(id="B", name="Bellatrix", x=2, y=1, base_ru=2, owner=None, npc_ships=2)
     game.stars = [star_a, star_b]
 
     # Create players
@@ -316,12 +312,8 @@ def test_hyperspace_loss_statistical():
         game.fleets = [fleet]
 
         # Create minimal stars
-        star_a = Star(
-            id="A", name="Altair", x=0, y=0, base_ru=4, owner="p1", npc_ships=0
-        )
-        star_b = Star(
-            id="B", name="Bellatrix", x=2, y=0, base_ru=2, owner=None, npc_ships=2
-        )
+        star_a = Star(id="A", name="Altair", x=0, y=0, base_ru=4, owner="p1", npc_ships=0)
+        star_b = Star(id="B", name="Bellatrix", x=2, y=0, base_ru=2, owner=None, npc_ships=2)
         game.stars = [star_a, star_b]
 
         # Create players

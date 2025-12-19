@@ -4,7 +4,6 @@ This module renders the 12x10 game grid as ASCII art, showing stars
 with their RU values based on the player's fog-of-war knowledge.
 """
 
-from typing import List
 
 from ..models.player import Player
 from ..models.star import Star
@@ -13,7 +12,7 @@ from ..models.star import Star
 class MapRenderer:
     """Renders 12x10 ASCII map with fog-of-war."""
 
-    def render(self, player: Player, stars: List[Star]) -> str:
+    def render(self, player: Player, stars: list[Star]) -> str:
         """Render ASCII map from player's perspective.
 
         Output format (12x10 grid, 2 chars per cell):
@@ -84,7 +83,7 @@ class MapRenderer:
             # Unowned - show RU value
             return f"{star.base_ru}{star_id}"
 
-    def render_with_coords(self, player: Player, stars: List[Star]) -> str:
+    def render_with_coords(self, player: Player, stars: list[Star]) -> str:
         """Render map with coordinate labels.
 
         Args:

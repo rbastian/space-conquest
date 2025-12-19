@@ -98,9 +98,14 @@ def update_game_context_from_observation(
     """Extract game context from observation data.
 
     This function analyzes the observation to determine:
-    - Game phase (early/mid/late based on turn)
+    - Game phase (early/mid/late based on strategic state, not turns)
     - Threat level (based on enemy proximity)
     - Strategic metrics (production, ships, stars)
+
+    Game phases are state-based (like chess):
+    - EARLY: No enemy contact yet (expansion phase)
+    - MID: Enemy located but distant (positioning phase)
+    - LATE: Enemy close or decisive battle (endgame phase)
 
     Args:
         observation: Observation dict from get_observation tool
@@ -110,14 +115,6 @@ def update_game_context_from_observation(
     Returns:
         GameContext with analyzed information
     """
-    # Determine game phase
-    if turn <= 10:
-        phase = "early"
-    elif turn <= 30:
-        phase = "mid"
-    else:
-        phase = "late"
-
     # Extract strategic dashboard
     dashboard = observation.get("strategic_dashboard", {})
     controlled_stars = dashboard.get("controlled_stars_count", 1)
@@ -142,6 +139,18 @@ def update_game_context_from_observation(
             if distance is not None:
                 if nearest_enemy_distance is None or distance < nearest_enemy_distance:
                     nearest_enemy_distance = distance
+
+    # Determine game phase based on strategic state (not turns)
+    # Like chess: phases are defined by board state, not move count
+    if enemy_stars_known == 0:
+        # Early Game: No enemy contact yet - pure expansion phase
+        phase = "early"
+    elif nearest_enemy_distance is not None and nearest_enemy_distance <= 3:
+        # Late Game: Enemy within striking distance - decisive battle phase
+        phase = "late"
+    else:
+        # Mid Game: Enemy located but distant - positioning/buildup phase
+        phase = "mid"
 
     # Build context
     context: GameContext = {
@@ -225,52 +234,18 @@ def reset_error_tracking(state: AgentState) -> AgentState:
 def filter_tools_by_game_state(state: AgentState) -> list[str]:
     """Determine which tools should be available based on game state.
 
-    This implements dynamic tool filtering to prevent the LLM from
-    making invalid tool calls based on the current situation.
-
-    Rules:
-    - Turn 1: Don't show memory_query (no history yet)
-    - After orders submitted: Don't show submit_orders again
-    - Always available: get_observation, query_star, estimate_route,
-      get_ascii_map, propose_orders
+    With the simplified tool set, we only have submit_orders tool.
+    Game state is passed directly in user message, and orders are
+    submitted via the submit_orders tool (which validates atomically).
 
     Args:
         state: Current agent state
 
     Returns:
-        List of tool names that should be available
+        List of tool names that should be available (always just submit_orders)
     """
-    game_context = state.get("game_context")
-    if not game_context:
-        # No context yet, return all tools (initial state)
-        return [
-            "get_observation",
-            "get_ascii_map",
-            "query_star",
-            "estimate_route",
-            "propose_orders",
-            "submit_orders",
-            "memory_query",
-        ]
-
-    # Base tools always available
-    tools = [
-        "get_observation",
-        "get_ascii_map",
-        "query_star",
-        "estimate_route",
-        "propose_orders",
-    ]
-
-    # Add submit_orders only if not already submitted
-    if not game_context.get("orders_submitted", False):
-        tools.append("submit_orders")
-
-    # Add memory_query only after turn 1 (need history to query)
-    if game_context.get("turn", 1) > 1:
-        tools.append("memory_query")
-
-    return tools
+    # Only submit_orders tool is available in simplified agent
+    return ["submit_orders"]
 
 
 def inject_defensive_urgency(game_context: dict) -> str:
@@ -410,42 +385,3 @@ def inject_threat_vector_analysis(threat_vectors: list[dict]) -> str:
         )
 
     return "\n".join(urgency_lines) if urgency_lines else ""
-
-
-def enhance_observation_context(observation: dict, game_context: GameContext) -> str:
-    """Enhance observation with contextual insights.
-
-    Adds a brief analysis of the observation based on the current
-    game context to help guide the LLM's decision-making.
-
-    Args:
-        observation: Raw observation dict
-        game_context: Current game context
-
-    Returns:
-        Enhanced observation with contextual notes
-    """
-    insights = []
-
-    # Threat level insights
-    threat = game_context.get("threat_level")
-    if threat == "critical":
-        insights.append("CRITICAL THREAT: Enemy very close to home! Prioritize home defense.")
-    elif threat == "high":
-        insights.append("HIGH THREAT: Enemy nearby. Consider defensive positioning.")
-    elif threat == "low" and game_context.get("game_phase") == "early":
-        insights.append("Early game, low threat. Focus on aggressive expansion.")
-
-    # Production insights
-    production = game_context.get("total_production", 0)
-    stars = game_context.get("controlled_stars_count", 1)
-    if production < stars * 2:  # Less than average RU per star
-        insights.append(
-            f"Low production ({production}/turn from {stars} stars). "
-            "Prioritize capturing high-RU stars."
-        )
-
-    if insights:
-        return "\n\nTactical Analysis:\n- " + "\n- ".join(insights)
-
-    return ""

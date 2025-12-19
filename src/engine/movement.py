@@ -12,7 +12,6 @@ after being ordered to depart.
 """
 
 from dataclasses import dataclass
-from typing import List
 
 from ..models.fleet import Fleet
 from ..models.game import Game
@@ -37,7 +36,7 @@ class HyperspaceLoss:
     dest: str
 
 
-def process_fleet_movement(game: Game) -> tuple[Game, List[HyperspaceLoss]]:
+def process_fleet_movement(game: Game) -> tuple[Game, list[HyperspaceLoss]]:
     """Execute Phase 1: Fleet Movement.
 
     1. Apply 2% hyperspace loss to each fleet in transit:

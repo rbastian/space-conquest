@@ -1,7 +1,6 @@
 """Player data model with fog-of-war knowledge."""
 
 from dataclasses import dataclass, field
-from typing import List, Set
 
 
 @dataclass
@@ -15,12 +14,8 @@ class Player:
 
     id: str  # "p1" or "p2"
     home_star: str  # Home star ID
-    visited_stars: Set[str] = field(
-        default_factory=set
-    )  # Stars visited by fleet arrivals
-    fleets: List = field(
-        default_factory=list
-    )  # Player's fleets in transit (Fleet objects)
+    visited_stars: set[str] = field(default_factory=set)  # Stars visited by fleet arrivals
+    fleets: list = field(default_factory=list)  # Player's fleets in transit (Fleet objects)
 
     def __post_init__(self):
         """Validate player data after initialization."""

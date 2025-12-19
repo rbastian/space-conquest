@@ -1,13 +1,13 @@
 """Test case to reproduce the bug where p1 fleet doesn't participate in NPC combat."""
 
-import pytest
+import random
+
 from src.engine.combat import process_combat
 from src.engine.movement import process_fleet_movement
 from src.models.fleet import Fleet
 from src.models.game import Game
 from src.models.player import Player
 from src.models.star import Star
-import random
 
 
 def test_simultaneous_arrival_at_npc_star_both_fleets_participate():
@@ -104,13 +104,15 @@ def test_simultaneous_arrival_at_npc_star_both_fleets_participate():
     game, combat_events = process_combat(game)
 
     # Verify combat events
-    print(f"\n=== Combat Events ===")
+    print("\n=== Combat Events ===")
     for i, event in enumerate(combat_events):
-        print(f"Event {i+1}: {event.combat_type} at {event.star_name}")
+        print(f"Event {i + 1}: {event.combat_type} at {event.star_name}")
         print(f"  Attacker: {event.attacker} ({event.attacker_ships} ships)")
         print(f"  Defender: {event.defender} ({event.defender_ships} ships)")
         print(f"  Winner: {event.winner}")
-        print(f"  Survivors: Attacker={event.attacker_survivors}, Defender={event.defender_survivors}")
+        print(
+            f"  Survivors: Attacker={event.attacker_survivors}, Defender={event.defender_survivors}"
+        )
         print(f"  Control: {event.control_before} → {event.control_after}")
 
     # Should have 2 combat events: PvP combat first, then NPC combat
@@ -126,8 +128,16 @@ def test_simultaneous_arrival_at_npc_star_both_fleets_participate():
     # The PvP resolution determines attacker/defender roles, but result is deterministic
     assert pvp_combat.winner in ["attacker", "defender"]  # Higher count wins
     # Verify the winner has 2 survivors (4 - ceil(3/2) = 2)
-    winner_survivors = pvp_combat.attacker_survivors if pvp_combat.winner == "attacker" else pvp_combat.defender_survivors
-    loser_survivors = pvp_combat.defender_survivors if pvp_combat.winner == "attacker" else pvp_combat.attacker_survivors
+    winner_survivors = (
+        pvp_combat.attacker_survivors
+        if pvp_combat.winner == "attacker"
+        else pvp_combat.defender_survivors
+    )
+    loser_survivors = (
+        pvp_combat.defender_survivors
+        if pvp_combat.winner == "attacker"
+        else pvp_combat.attacker_survivors
+    )
     assert winner_survivors == 2
     assert loser_survivors == 0
 

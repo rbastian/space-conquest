@@ -203,6 +203,105 @@
     <!-- Hover Tooltip (positioned dynamically) -->
     <div class="star-tooltip hidden" id="starTooltip"></div>
 
+    <!-- AI Configuration Modal -->
+    <div class="config-modal" id="configModal">
+        <div class="config-backdrop"></div>
+        <div class="config-panel panel">
+            <div class="panel-header">
+                <h2>MISSION PARAMETERS</h2>
+                <div class="header-decoration">
+                    <span class="status-indicator pulse"></span>
+                </div>
+            </div>
+            <div class="panel-content scrollable">
+
+                <!-- Provider Selection -->
+                <div class="config-section">
+                    <h3 class="section-title">
+                        <span class="title-marker">▸</span> AI PROVIDER
+                    </h3>
+                    <div class="provider-grid">
+                        <button class="provider-card active" data-provider="bedrock">
+                            <div class="card-badge">AWS</div>
+                            <div class="card-name">BEDROCK</div>
+                            <div class="card-desc">CLAUDE VIA AWS</div>
+                        </button>
+                        <button class="provider-card" data-provider="anthropic">
+                            <div class="card-badge">API</div>
+                            <div class="card-name">ANTHROPIC</div>
+                            <div class="card-desc">CLAUDE DIRECT</div>
+                        </button>
+                        <button class="provider-card" data-provider="openai">
+                            <div class="card-badge">GPT</div>
+                            <div class="card-name">OPENAI</div>
+                            <div class="card-desc">GPT-4 SERIES</div>
+                        </button>
+                        <button class="provider-card" data-provider="ollama">
+                            <div class="card-badge">LOC</div>
+                            <div class="card-name">OLLAMA</div>
+                            <div class="card-desc">LOCAL MODELS</div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Model Selection -->
+                <div class="config-section">
+                    <h3 class="section-title">
+                        <span class="title-marker">▸</span> MODEL DESIGNATION
+                    </h3>
+                    <div class="model-selector">
+                        <select class="model-select" id="modelSelect">
+                            <option value="">DEFAULT (RECOMMENDED)</option>
+                        </select>
+                    </div>
+                    <div class="model-note">
+                        <span class="note-icon">ⓘ</span>
+                        <span id="modelNote">PROVIDER DEFAULT CONFIGURATION</span>
+                    </div>
+                </div>
+
+                <!-- Advanced Options -->
+                <div class="config-section">
+                    <button class="advanced-toggle" id="advancedToggle">
+                        <span class="toggle-arrow">▸</span>
+                        <span>ADVANCED PARAMETERS</span>
+                    </button>
+                    <div class="advanced-content hidden" id="advancedContent">
+                        <div class="field-group">
+                            <label class="field-label">RANDOM SEED</label>
+                            <input type="number" class="field-input" id="seedInput" placeholder="AUTO-GENERATE">
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label">PLAYER ASSIGNMENT</label>
+                            <div class="radio-group">
+                                <label class="radio-option">
+                                    <input type="radio" name="playerSide" value="p1" checked>
+                                    <span class="radio-box"></span>
+                                    <span class="radio-text">PLAYER 1 (GREEN)</span>
+                                </label>
+                                <label class="radio-option">
+                                    <input type="radio" name="playerSide" value="p2">
+                                    <span class="radio-box"></span>
+                                    <span class="radio-text">PLAYER 2 (RED)</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="panel-footer config-footer">
+                <button class="action-btn secondary" id="cancelConfigBtn">
+                    <span class="btn-label">ABORT</span>
+                </button>
+                <button class="action-btn primary" id="startGameBtn">
+                    <span class="btn-label">INITIALIZE MISSION</span>
+                    <span class="btn-indicator">▶</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/game.js"></script>
 </body>
 </html>

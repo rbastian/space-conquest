@@ -49,9 +49,7 @@ def test_execute_turn_increments_turn_counter():
     orders = {"p1": [], "p2": []}
 
     # Execute turn
-    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(
-        game, orders
-    )
+    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(game, orders)
 
     # Turn should increment
     assert game.turn == 1
@@ -92,9 +90,7 @@ def test_execute_turn_processes_orders():
     orders = {"p1": [Order(from_star="A", to_star="B", ships=5)], "p2": []}
 
     # Execute turn
-    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(
-        game, orders
-    )
+    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(game, orders)
 
     # Fleet should be created
     assert len(game.fleets) == 1
@@ -139,9 +135,7 @@ def test_execute_turn_deducts_ships():
     orders = {"p1": [Order(from_star="A", to_star="B", ships=3)], "p2": []}
 
     # Execute turn
-    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(
-        game, orders
-    )
+    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(game, orders)
 
     # Ships should be deducted immediately in Phase 4
     # 10 (start) - 3 (fleet) + 4 (home production) = 11
@@ -193,9 +187,7 @@ def test_execute_turn_validates_orders():
     orders = {"p1": [Order(from_star="A", to_star="C", ships=5)], "p2": []}
 
     # Should not crash
-    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(
-        game, orders
-    )
+    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(game, orders)
 
     # Should have error logged
     assert "p1" in game.order_errors
@@ -244,9 +236,7 @@ def test_execute_turn_victory_stops_processing():
     orders = {"p1": [], "p2": []}
 
     # Execute turn
-    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(
-        game, orders
-    )
+    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(game, orders)
 
     # Game should have winner
     # Note: Turn counter increments even on victory (phases 1-3 executed)
@@ -316,9 +306,7 @@ def test_multiple_orders_from_same_star():
     }
 
     # Execute turn
-    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(
-        game, orders
-    )
+    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(game, orders)
 
     # Both fleets should be created
     assert len(game.fleets) == 2
@@ -362,18 +350,14 @@ def test_full_turn_cycle():
 
     # Turn 1: Send fleet to B
     orders = {"p1": [Order(from_star="A", to_star="B", ships=5)], "p2": []}
-    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(
-        game, orders
-    )
+    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(game, orders)
 
     assert game.turn == 1
     assert len(game.fleets) == 1
 
     # Turn 2: Fleet arrives and fights NPC
     orders = {"p1": [], "p2": []}
-    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(
-        game, orders
-    )
+    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(game, orders)
 
     assert game.turn == 2
     # Fleet should arrive and fight NPC (assuming survival)
@@ -417,9 +401,7 @@ def test_order_from_uncontrolled_star():
     orders = {"p1": [Order(from_star="B", to_star="A", ships=3)], "p2": []}
 
     # Should not crash
-    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(
-        game, orders
-    )
+    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(game, orders)
 
     # Should have error logged (ownership check catches this)
     assert "p1" in game.order_errors
@@ -467,9 +449,7 @@ def test_order_to_nonexistent_star():
     orders = {"p1": [Order(from_star="A", to_star="Z", ships=5)], "p2": []}
 
     # Should not crash
-    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(
-        game, orders
-    )
+    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(game, orders)
 
     # Should have error logged
     assert "p1" in game.order_errors
@@ -521,9 +501,7 @@ def test_fleet_id_generation():
         ],
         "p2": [],
     }
-    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(
-        game, orders
-    )
+    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(game, orders)
 
     # Check fleet IDs
     assert game.fleets[0].id == "p1-000"
@@ -579,9 +557,7 @@ def test_both_players_submit_orders():
         "p1": [Order(from_star="A", to_star="C", ships=5)],
         "p2": [Order(from_star="B", to_star="C", ships=6)],
     }
-    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(
-        game, orders
-    )
+    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(game, orders)
 
     # Both fleets should be created
     assert len(game.fleets) == 2
@@ -659,9 +635,7 @@ def test_multiple_orders_exceed_ships():
     }
 
     # Should not crash
-    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(
-        game, orders
-    )
+    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(game, orders)
 
     # Should have over-commitment error logged
     assert "p1" in game.order_errors
@@ -741,9 +715,7 @@ def test_partial_order_execution():
     }
 
     # Should not crash
-    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(
-        game, orders
-    )
+    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(game, orders)
 
     # Should have one error logged
     assert "p1" in game.order_errors
@@ -809,9 +781,7 @@ def test_no_crash_on_multiple_error_types():
     # Various error types that should all be caught gracefully
     valid_orders = [
         Order(from_star="A", to_star="Z", ships=3),  # Nonexistent destination
-        Order(
-            from_star="B", to_star="A", ships=2
-        ),  # Not owned (will trigger over-commitment)
+        Order(from_star="B", to_star="A", ships=2),  # Not owned (will trigger over-commitment)
     ]
     test_orders = {"p1": valid_orders, "p2": []}
 
@@ -835,9 +805,7 @@ def test_empty_order_list():
     orders = {"p1": [], "p2": []}
 
     # Should not crash
-    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(
-        game, orders
-    )
+    game, combat_events, hyperspace_losses, rebellion_events = executor.execute_turn(game, orders)
 
     # No errors
     assert "p1" not in game.order_errors

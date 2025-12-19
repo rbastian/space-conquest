@@ -101,9 +101,7 @@ def test_save_preserves_player_fog_of_war():
         loaded_game = load_game(str(filepath))
 
         # Check player knowledge
-        assert (
-            loaded_game.players["p1"].visited_stars == game.players["p1"].visited_stars
-        )
+        assert loaded_game.players["p1"].visited_stars == game.players["p1"].visited_stars
 
 
 def test_save_preserves_rng_state():

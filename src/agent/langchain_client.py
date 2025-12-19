@@ -29,6 +29,7 @@ PROVIDER_MODELS = {
         "haiku": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
         "haiku45": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
         "sonnet": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "sonnet45": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
         "opus": "us.anthropic.claude-3-opus-20240229-v1:0",
     },
     "openai": {
