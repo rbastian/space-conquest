@@ -4,7 +4,7 @@ This module displays game state information including controlled stars,
 fleets in transit, and combat results.
 """
 
-from typing import List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from ..models.game import Game
 from ..models.player import Player
@@ -33,9 +33,7 @@ REPORT_EMOJIS = {
 class DisplayManager:
     """Manages turn information display."""
 
-    def _player_participated_in_combat(
-        self, event: "CombatEvent", player_id: str
-    ) -> bool:
+    def _player_participated_in_combat(self, event: "CombatEvent", player_id: str) -> bool:
         """Check if player participated in combat (fog-of-war filter).
 
         Args:
@@ -70,9 +68,9 @@ class DisplayManager:
         self,
         player: Player,
         game: Game,
-        combat_events: Optional[List["CombatEvent"]] = None,
-        hyperspace_losses: Optional[List["HyperspaceLoss"]] = None,
-        rebellion_events: Optional[List["RebellionEvent"]] = None,
+        combat_events: list["CombatEvent"] | None = None,
+        hyperspace_losses: list["HyperspaceLoss"] | None = None,
+        rebellion_events: list["RebellionEvent"] | None = None,
     ) -> None:
         """Display comprehensive turn summary.
 
@@ -143,7 +141,7 @@ class DisplayManager:
             if star.id == player.home_star:
                 try:
                     # Try to use the house emoji (U+1F3E0)
-                    star_name = f"\U0001F3E0 {star.name}"
+                    star_name = f"\U0001f3e0 {star.name}"
                 except (UnicodeEncodeError, UnicodeDecodeError):
                     # Fallback to simple star character if emoji fails
                     star_name = f"* {star.name}"
@@ -327,9 +325,7 @@ class DisplayManager:
             return
 
         # Sort fleets by arrival turn (ascending), then by fleet ID
-        sorted_fleets = sorted(
-            player_fleets, key=lambda f: (f.dist_remaining, f.id)
-        )
+        sorted_fleets = sorted(player_fleets, key=lambda f: (f.dist_remaining, f.id))
 
         print("Fleets in Hyperspace:")
 
@@ -385,9 +381,7 @@ class DisplayManager:
         """Display help information for human players."""
         print("\n=== Space Conquest - Command Help ===\n")
         print("Commands:")
-        print(
-            "  move <ships> from <star> to <star>  - Send ships from one star to another"
-        )
+        print("  move <ships> from <star> to <star>  - Send ships from one star to another")
         print("  pass                                 - End turn without moving")
         print("  help                                 - Show this help message")
         print("  status                               - Show current game state")
@@ -434,9 +428,9 @@ class DisplayManager:
     def show_enhanced_victory(
         self,
         game: Game,
-        combat_events: List["CombatEvent"],
-        hyperspace_losses: List["HyperspaceLoss"],
-        rebellion_events: List["RebellionEvent"],
+        combat_events: list["CombatEvent"],
+        hyperspace_losses: list["HyperspaceLoss"],
+        rebellion_events: list["RebellionEvent"],
     ) -> None:
         """Display enhanced victory screen with final turn events and statistics.
 
@@ -463,9 +457,7 @@ class DisplayManager:
         self._show_victory_message(game)
 
         # Display final turn events
-        self._show_final_turn_events(
-            game, combat_events, hyperspace_losses, rebellion_events
-        )
+        self._show_final_turn_events(game, combat_events, hyperspace_losses, rebellion_events)
 
         # Display final map state (no fog-of-war)
         self._show_final_map(game)
@@ -517,9 +509,9 @@ class DisplayManager:
     def _show_final_turn_events(
         self,
         game: Game,
-        combat_events: List["CombatEvent"],
-        hyperspace_losses: List["HyperspaceLoss"],
-        rebellion_events: List["RebellionEvent"],
+        combat_events: list["CombatEvent"],
+        hyperspace_losses: list["HyperspaceLoss"],
+        rebellion_events: list["RebellionEvent"],
     ) -> None:
         """Display events from the final turn.
 
@@ -587,9 +579,7 @@ class DisplayManager:
             print("Rebellions:")
             for event in rebellion_events:
                 owner_name = self._get_display_name(event.owner, game)
-                outcome_str = (
-                    "lost to rebels" if event.outcome == "lost" else "crushed rebellion"
-                )
+                outcome_str = "lost to rebels" if event.outcome == "lost" else "crushed rebellion"
                 print(
                     f"  {REPORT_EMOJIS['rebellion']} {event.star} ({event.star_name}): "
                     f"{owner_name} {outcome_str} "
@@ -638,16 +628,14 @@ class DisplayManager:
 
             # Determine if this battle captured a home star
             home_owner = "p1" if event.star_id == p1_home else "p2"
-            captured = (
-                event.winner == "attacker" and event.attacker != home_owner
-            ) or (event.winner == "defender" and event.defender != home_owner)
+            captured = (event.winner == "attacker" and event.attacker != home_owner) or (
+                event.winner == "defender" and event.defender != home_owner
+            )
             if captured:
                 print("  >>> HOME STAR CAPTURED - GAME OVER <<<")
         else:
             # NPC combat at home star (shouldn't happen, but handle it)
-            attacker_label = (
-                "Combined forces" if event.attacker == "combined" else event.attacker
-            )
+            attacker_label = "Combined forces" if event.attacker == "combined" else event.attacker
             print(f"  Attacker: {attacker_label} with {event.attacker_ships} ships")
             print(f"  Defender: NPC with {event.defender_ships} ships")
             print(f"  Result: {event.winner or 'tie'} wins")
@@ -694,14 +682,10 @@ class DisplayManager:
             print("Final Turn Production:")
             if p1_production > 0:
                 p1_name = self._get_display_name("p1", game)
-                print(
-                    f"  {REPORT_EMOJIS['production']} {p1_name}: {p1_production} ships produced"
-                )
+                print(f"  {REPORT_EMOJIS['production']} {p1_name}: {p1_production} ships produced")
             if p2_production > 0:
                 p2_name = self._get_display_name("p2", game)
-                print(
-                    f"  {REPORT_EMOJIS['production']} {p2_name}: {p2_production} ships produced"
-                )
+                print(f"  {REPORT_EMOJIS['production']} {p2_name}: {p2_production} ships produced")
             print()
 
     def _show_final_map(self, game: Game) -> None:
@@ -770,9 +754,7 @@ class DisplayManager:
 
             # Add home star bonus to production
             home_star = game.players[pid].home_star
-            home_controlled = any(
-                s.id == home_star and s.owner == pid for s in controlled_stars
-            )
+            home_controlled = any(s.id == home_star and s.owner == pid for s in controlled_stars)
             if home_controlled:
                 # Home star produces 4 instead of base_ru
                 home_base_ru = next(s.base_ru for s in game.stars if s.id == home_star)
@@ -918,9 +900,7 @@ class DisplayManager:
         # Calculate if all ships were lost
         attacker_all_lost = event.attacker_losses == event.attacker_ships
         defender_all_lost = event.defender_losses == event.defender_ships
-        mutual_destruction = (
-            attacker_all_lost and defender_all_lost and event.control_after is None
-        )
+        mutual_destruction = attacker_all_lost and defender_all_lost and event.control_after is None
 
         # Scenario 5: Mutual Destruction
         if mutual_destruction:
@@ -997,9 +977,7 @@ class DisplayManager:
             and is_me_defender
         )
         winner_losses = (
-            event.attacker_losses
-            if event.winner == "attacker"
-            else event.defender_losses
+            event.attacker_losses if event.winner == "attacker" else event.defender_losses
         )
         casualties = self._format_casualties(winner_losses, is_player_winner)
         winner_name = "You" if is_player_winner else opponent_name
@@ -1007,9 +985,9 @@ class DisplayManager:
 
     def display_combat_results(
         self,
-        combat_events: List[CombatEvent],
+        combat_events: list[CombatEvent],
         game: Game = None,
-        player_id: Optional[str] = None,
+        player_id: str | None = None,
     ) -> None:
         """Display combat results from the turn.
 
@@ -1122,9 +1100,7 @@ class DisplayManager:
             f"-> {winner_name} wins with {survivors} ships remaining ({casualties} casualties)"
         )
 
-    def display_hyperspace_losses(
-        self, losses: List[HyperspaceLoss], game: Game = None
-    ) -> None:
+    def display_hyperspace_losses(self, losses: list[HyperspaceLoss], game: Game = None) -> None:
         """Display hyperspace losses from the turn.
 
         Args:
@@ -1136,16 +1112,14 @@ class DisplayManager:
 
         print("\n--- Hyperspace Losses ---")
         for loss in losses:
-            owner_name = (
-                self._get_display_name(loss.owner, game) if game else loss.owner
-            )
+            owner_name = self._get_display_name(loss.owner, game) if game else loss.owner
             print(
                 f"{REPORT_EMOJIS['hyperspace_loss']} Fleet lost in hyperspace: {loss.ships} ships ({owner_name}) from {loss.origin} to {loss.dest}"
             )
         print()
 
     def display_rebellion_results(
-        self, rebellion_events: List[RebellionEvent], player_id: str, game: Game
+        self, rebellion_events: list[RebellionEvent], player_id: str, game: Game
     ) -> None:
         """Display rebellion results from the turn.
 

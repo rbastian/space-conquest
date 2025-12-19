@@ -39,6 +39,10 @@ class GameController {
         // Event indicators (battles and rebellions)
         this.eventIndicators = [];
 
+        // Config modal state
+        this.selectedProvider = 'bedrock';
+        this.configHandlersInitialized = false;
+
         // Initialize
         this.initializeEventListeners();
         this.promptGameCreation();
@@ -116,20 +120,144 @@ class GameController {
             await this.loadGameState();
             this.connectWebSocket();
         } else {
-            this.addTerminalLine('>> CREATING NEW GAME VS AI', 'system');
-            await this.createNewGame();
+            // Show configuration modal for new games
+            this.showConfigModal();
         }
     }
 
-    async createNewGame() {
+    showConfigModal() {
+        const modal = document.getElementById('configModal');
+        modal.classList.remove('hidden');
+
+        // Only initialize handlers once
+        if (!this.configHandlersInitialized) {
+            this.initConfigModalHandlers();
+            this.configHandlersInitialized = true;
+        }
+    }
+
+    hideConfigModal() {
+        const modal = document.getElementById('configModal');
+        modal.classList.add('hidden');
+    }
+
+    initConfigModalHandlers() {
+        // Provider selection
+        const providerCards = document.querySelectorAll('.provider-card');
+
+        providerCards.forEach(card => {
+            card.addEventListener('click', () => {
+                providerCards.forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+                this.selectedProvider = card.dataset.provider;
+                this.updateModelOptions(this.selectedProvider);
+            });
+        });
+
+        // Advanced toggle
+        const advancedToggle = document.getElementById('advancedToggle');
+        const advancedContent = document.getElementById('advancedContent');
+        advancedToggle.addEventListener('click', () => {
+            advancedToggle.classList.toggle('active');
+            advancedContent.classList.toggle('hidden');
+        });
+
+        // Cancel button
+        document.getElementById('cancelConfigBtn').addEventListener('click', () => {
+            this.hideConfigModal();
+            this.addTerminalLine('>> MISSION INITIALIZATION ABORTED', 'error');
+        });
+
+        // Start game button
+        document.getElementById('startGameBtn').addEventListener('click', async () => {
+            const modelSelect = document.getElementById('modelSelect');
+            const seedInput = document.getElementById('seedInput');
+            const playerSide = document.querySelector('input[name="playerSide"]:checked').value;
+
+            const config = {
+                humanPlayer: playerSide,
+                aiProvider: this.selectedProvider,
+                aiModel: modelSelect.value || null,
+                seed: seedInput.value ? parseInt(seedInput.value) : null
+            };
+
+            this.hideConfigModal();
+            this.addTerminalLine('>> MISSION PARAMETERS CONFIRMED', 'success');
+            this.addTerminalLine(`>> AI PROVIDER: ${this.selectedProvider.toUpperCase()}`, 'system');
+            if (config.aiModel) {
+                this.addTerminalLine(`>> MODEL: ${config.aiModel}`, 'system');
+            }
+            this.addTerminalLine('>> INITIALIZING GAME SESSION...', 'system');
+
+            await this.createNewGame(config);
+        });
+
+        // Initialize with default provider
+        this.updateModelOptions(this.selectedProvider);
+    }
+
+    updateModelOptions(provider) {
+        const modelSelect = document.getElementById('modelSelect');
+        const modelNote = document.getElementById('modelNote');
+
+        // Clear existing options
+        modelSelect.innerHTML = '<option value="">DEFAULT (RECOMMENDED)</option>';
+
+        // Add provider-specific model options (from langchain_client.py PROVIDER_MODELS)
+        const modelOptions = {
+            bedrock: [
+                'us.anthropic.claude-3-5-haiku-20241022-v1:0',
+                'global.anthropic.claude-haiku-4-5-20251001-v1:0',
+                'us.anthropic.claude-3-5-sonnet-20241022-v2:0',
+                'global.anthropic.claude-sonnet-4-5-20250929-v1:0',
+                'us.anthropic.claude-3-opus-20240229-v1:0'
+            ],
+            anthropic: [
+                'claude-3-5-sonnet-20241022',
+                'claude-3-5-haiku-20241022',
+                'claude-3-opus-20240229'
+            ],
+            openai: [
+                'gpt-4o',
+                'gpt-4o-mini',
+                'gpt-4-turbo',
+                'gpt-3.5-turbo'
+            ],
+            ollama: [
+                'llama3',
+                'llama3.1',
+                'mistral',
+                'mixtral',
+                'gemma',
+                'phi'
+            ]
+        };
+
+        if (modelOptions[provider]) {
+            modelOptions[provider].forEach(model => {
+                const option = document.createElement('option');
+                option.value = model;
+                option.textContent = model.toUpperCase();
+                modelSelect.appendChild(option);
+            });
+        }
+
+        // Update note text with default model info
+        const defaults = {
+            bedrock: 'Default: Haiku (fast, cost-effective)',
+            anthropic: 'Default: Sonnet (balanced performance)',
+            openai: 'Default: GPT-4o-mini (fast)',
+            ollama: 'Default: Llama3 (local)'
+        };
+        modelNote.textContent = defaults[provider] || 'Provider default configuration';
+    }
+
+    async createNewGame(config = { humanPlayer: 'p1', aiProvider: 'bedrock', aiModel: null, seed: null }) {
         try {
             const response = await fetch(`${this.apiBase}/games`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    humanPlayer: 'p1',
-                    aiProvider: 'bedrock'
-                })
+                body: JSON.stringify(config)
             });
 
             if (!response.ok) {
@@ -198,17 +326,23 @@ class GameController {
         const canvasWidth = 800;
         const canvasHeight = 800;
 
-        const cellWidth = canvasWidth / gridWidth;   // 66.67 pixels per grid cell
-        const cellHeight = canvasHeight / gridHeight; // 80 pixels per grid cell
+        // Add padding so stars on edges aren't cut off (30 pixels on each side)
+        const padding = 30;
+        const usableWidth = canvasWidth - (padding * 2);
+        const usableHeight = canvasHeight - (padding * 2);
+
+        const cellWidth = usableWidth / gridWidth;   // Cell width in usable space
+        const cellHeight = usableHeight / gridHeight; // Cell height in usable space
 
         this.gameState.stars = state.stars.map(s => ({
             ...s,
             // Store original grid coordinates for display
             gridX: s.x,
             gridY: s.y,
-            // Calculate canvas pixel positions (centered in grid cell)
-            x: (s.x + 0.5) * cellWidth,
-            y: (s.y + 0.5) * cellHeight,
+            // Calculate canvas pixel positions (aligned with grid vertices/intersections)
+            // Add padding offset so stars aren't at the edge
+            x: padding + (s.x * cellWidth),
+            y: padding + (s.y * cellHeight),
             owner: s.owner === 'p1' ? 1 : s.owner === 'p2' ? 2 : null
         }));
 
@@ -287,9 +421,19 @@ class GameController {
         // Clear previous event indicators
         this.eventIndicators = [];
 
-        if (events.combat && events.combat.length > 0) {
-            this.addTerminalLine(`>> ${events.combat.length} COMBAT EVENT(S) OCCURRED`, 'warning');
+        // Check if there are any events worth showing
+        const hasCombat = events.combat && events.combat.length > 0;
+        const hasRebellions = events.rebellions && events.rebellions.length > 0;
+        const hasHyperspaceLosses = events.hyperspaceLosses && events.hyperspaceLosses.length > 0;
+        const hasAnyEvents = hasCombat || hasRebellions || hasHyperspaceLosses;
+
+        // Show event log popup if any events occurred
+        if (hasAnyEvents) {
             this.showEventLog(events);
+        }
+
+        if (hasCombat) {
+            this.addTerminalLine(`>> ${events.combat.length} COMBAT EVENT(S) OCCURRED`, 'warning');
 
             // Add combat indicators
             events.combat.forEach(combat => {
@@ -305,7 +449,7 @@ class GameController {
             });
         }
 
-        if (events.rebellions && events.rebellions.length > 0) {
+        if (hasRebellions) {
             this.addTerminalLine(`>> ${events.rebellions.length} REBELLION(S) OCCURRED`, 'warning');
 
             // Add rebellion indicators
@@ -322,7 +466,7 @@ class GameController {
             });
         }
 
-        if (events.hyperspaceLosses && events.hyperspaceLosses.length > 0) {
+        if (hasHyperspaceLosses) {
             this.addTerminalLine(`>> ${events.hyperspaceLosses.length} FLEET(S) LOST IN HYPERSPACE`, 'error');
         }
     }
@@ -387,26 +531,43 @@ class GameController {
     drawGrid() {
         const ctx = this.ctx;
         const { width, height } = this.canvas;
-        const gridSize = 50;
 
-        ctx.strokeStyle = 'rgba(255, 176, 0, 0.08)';
-        ctx.lineWidth = 1;
+        // Game grid is 12x10 (0-11 x, 0-9 y)
+        const gridWidth = 12;
+        const gridHeight = 10;
 
-        // Vertical lines
-        for (let x = 0; x < width; x += gridSize) {
+        // Add padding to match star positioning
+        const padding = 30;
+        const usableWidth = width - (padding * 2);
+        const usableHeight = height - (padding * 2);
+
+        const cellWidth = usableWidth / gridWidth;
+        const cellHeight = usableHeight / gridHeight;
+
+        // Make grid more visible with brighter color and wider lines
+        ctx.strokeStyle = 'rgba(255, 176, 0, 0.25)';
+        ctx.lineWidth = 1 / this.scale; // Adjust line width for zoom level
+        ctx.setLineDash([5, 5]); // Dashed line pattern
+
+        // Vertical grid lines (align with game coordinates)
+        for (let x = 0; x <= gridWidth; x++) {
+            const xPos = padding + (x * cellWidth);
             ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, height);
+            ctx.moveTo(xPos, padding);
+            ctx.lineTo(xPos, height - padding);
             ctx.stroke();
         }
 
-        // Horizontal lines
-        for (let y = 0; y < height; y += gridSize) {
+        // Horizontal grid lines (align with game coordinates)
+        for (let y = 0; y <= gridHeight; y++) {
+            const yPos = padding + (y * cellHeight);
             ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(width, y);
+            ctx.moveTo(padding, yPos);
+            ctx.lineTo(width - padding, yPos);
             ctx.stroke();
         }
+
+        ctx.setLineDash([]); // Reset to solid lines
     }
 
     drawFleetPaths() {
@@ -640,12 +801,31 @@ class GameController {
             return distance < (star.isHome ? 20 : 16);
         });
 
+        // Find hovered fleet indicator
+        const hoveredFleet = this.gameState.fleets.find(fleet => {
+            const fromStar = this.gameState.stars.find(s => s.id === fleet.from);
+            const toStar = this.gameState.stars.find(s => s.id === fleet.to);
+
+            if (!fromStar || !toStar) return false;
+
+            const progress = 0.5; // This would be calculated based on eta
+            const fleetX = fromStar.x + (toStar.x - fromStar.x) * progress;
+            const fleetY = fromStar.y + (toStar.y - fromStar.y) * progress;
+
+            const dx = fleetX - x;
+            const dy = fleetY - y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return distance < 10;
+        });
+
         this.hoveredStar = hoveredStar || null;
-        this.canvas.style.cursor = hoveredStar ? 'pointer' : 'crosshair';
+        this.canvas.style.cursor = (hoveredStar || hoveredFleet) ? 'pointer' : 'crosshair';
 
         // Update tooltip
         if (hoveredStar) {
             this.showTooltip(hoveredStar, e.clientX, e.clientY);
+        } else if (hoveredFleet) {
+            this.showFleetTooltip(hoveredFleet, e.clientX, e.clientY);
         } else {
             this.hideTooltip();
         }
@@ -654,16 +834,16 @@ class GameController {
     showTooltip(star, mouseX, mouseY) {
         const isUnvisited = star.visited === false;
 
-        // Build tooltip content
-        let content = `<div class="tooltip-title">${isUnvisited ? 'UNKNOWN SECTOR' : star.name}</div>`;
+        // Build tooltip content - star names are always visible
+        let content = `<div class="tooltip-title">${star.name}</div>`;
         content += `<div class="tooltip-row"><span class="tooltip-label">COORDS:</span> ${star.gridX}, ${star.gridY}</div>`;
 
         if (isUnvisited) {
-            // Fog-of-war: limited info
+            // Fog-of-war: limited tactical info
             content += `<div class="tooltip-row"><span class="tooltip-label">STATUS:</span> OUT OF SENSOR RANGE</div>`;
             content += `<div class="tooltip-row"><span class="tooltip-label">INTEL:</span> UNCHARTED</div>`;
         } else {
-            // Full intel
+            // Full tactical intel
             const ownerText = star.owner ? `PLAYER ${star.owner}` : 'NEUTRAL';
             content += `<div class="tooltip-row"><span class="tooltip-label">OWNER:</span> ${ownerText}</div>`;
             content += `<div class="tooltip-row"><span class="tooltip-label">SHIPS:</span> ${star.ships}</div>`;
@@ -693,6 +873,41 @@ class GameController {
 
     hideTooltip() {
         this.tooltip.classList.add('hidden');
+    }
+
+    showFleetTooltip(fleet, mouseX, mouseY) {
+        const fromStar = this.gameState.stars.find(s => s.id === fleet.from);
+        const toStar = this.gameState.stars.find(s => s.id === fleet.to);
+
+        if (!fromStar || !toStar) return;
+
+        const ownerText = fleet.owner === 1 ? 'PLAYER 1' : 'PLAYER 2';
+
+        let content = `<div class="tooltip-title">FLEET IN TRANSIT</div>`;
+        content += `<div class="tooltip-row"><span class="tooltip-label">OWNER:</span> ${ownerText}</div>`;
+        content += `<div class="tooltip-row"><span class="tooltip-label">SHIPS:</span> ${fleet.ships}</div>`;
+        content += `<div class="tooltip-row"><span class="tooltip-label">FROM:</span> ${fleet.from}</div>`;
+        content += `<div class="tooltip-row"><span class="tooltip-label">TO:</span> ${fleet.to}</div>`;
+        content += `<div class="tooltip-row"><span class="tooltip-label">ARRIVES:</span> TURN ${fleet.eta}</div>`;
+
+        this.tooltip.innerHTML = content;
+        this.tooltip.classList.remove('hidden');
+
+        // Position tooltip near mouse, but keep it on screen
+        const tooltipRect = this.tooltip.getBoundingClientRect();
+        let left = mouseX + 15;
+        let top = mouseY + 15;
+
+        // Adjust if tooltip would go off-screen
+        if (left + tooltipRect.width > window.innerWidth - 10) {
+            left = mouseX - tooltipRect.width - 15;
+        }
+        if (top + tooltipRect.height > window.innerHeight - 10) {
+            top = mouseY - tooltipRect.height - 15;
+        }
+
+        this.tooltip.style.left = `${left}px`;
+        this.tooltip.style.top = `${top}px`;
     }
 
     selectStar(star) {
@@ -992,7 +1207,7 @@ class GameController {
                 <td>${fleet.from}</td>
                 <td>${fleet.to}</td>
                 <td>${fleet.ships}</td>
-                <td>${fleet.eta} TURN${fleet.eta !== 1 ? 'S' : ''}</td>
+                <td>TURN ${fleet.eta}</td>
             </tr>
         `).join('');
     }

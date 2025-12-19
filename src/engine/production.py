@@ -8,7 +8,6 @@ Key: Rebellions are checked in Phase 3b (after combat, before victory check) so 
 see rebellion results BEFORE submitting orders. Production happens in Phase 5 (after orders).
 """
 
-from typing import List
 
 from ..models.game import Game
 from ..models.star import Star
@@ -32,7 +31,7 @@ def _is_home_star(game: Game, star: Star) -> bool:
     return star.id in home_stars
 
 
-def process_rebellions(game: Game) -> tuple[Game, List[RebellionEvent]]:
+def process_rebellions(game: Game) -> tuple[Game, list[RebellionEvent]]:
     """Execute Phase 3b: Rebellions.
 
     For each player-controlled star:
@@ -89,7 +88,7 @@ def process_production(game: Game, rebelled_star_ids: set[str] | None = None) ->
     return game
 
 
-def process_rebellions_and_production(game: Game) -> tuple[Game, List[RebellionEvent]]:
+def process_rebellions_and_production(game: Game) -> tuple[Game, list[RebellionEvent]]:
     """Execute Rebellions & Production together (legacy method for backward compatibility).
 
     This method is kept for tests that expect the old behavior where rebellions

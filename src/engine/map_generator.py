@@ -1,6 +1,5 @@
 """Star map generation logic with balanced quadrant distribution."""
 
-
 from ..models import Game, Player, Star
 from ..utils import (
     GRID_X,
@@ -27,6 +26,8 @@ STAR_ID_TO_NAME = {
     "N": "Naos",
     "O": "Ophiuchi",
     "P": "Polaris",
+    "R": "Rigel",
+    "S": "Sirius",
 }
 
 # Quadrant definitions for balanced star distribution
@@ -41,14 +42,14 @@ QUADRANTS = {
     "Q2": {  # Northeast - Neutral
         "x_range": (6, 11),
         "y_range": (0, 4),
-        "npc_count": 3,
-        "ru_values": [1, 2, 3],  # 6 RU total
+        "npc_count": 4,
+        "ru_values": [1, 2, 2, 3],  # 8 RU total
     },
     "Q3": {  # Southwest - Neutral
         "x_range": (0, 5),
         "y_range": (5, 9),
-        "npc_count": 3,
-        "ru_values": [1, 2, 3],  # 6 RU total
+        "npc_count": 4,
+        "ru_values": [1, 2, 2, 3],  # 8 RU total
     },
     "Q4": {  # Southeast - P2 home region
         "x_range": (6, 11),
@@ -65,12 +66,12 @@ def generate_map(seed: int) -> Game:
     Algorithm:
     1. Place 2 home stars (0-3 parsecs from corners, using Chebyshev distance)
     2. Randomly assign which player gets which corner (deterministic based on seed)
-    3. Place 14 NPC stars using balanced quadrant distribution:
+    3. Place 16 NPC stars using balanced quadrant distribution:
        - Q1 (NW): 4 NPC stars with RU {1,2,2,3} = 8 RU
-       - Q2 (NE): 3 NPC stars with RU {1,2,3} = 6 RU
-       - Q3 (SW): 3 NPC stars with RU {1,2,3} = 6 RU
+       - Q2 (NE): 4 NPC stars with RU {1,2,2,3} = 8 RU
+       - Q3 (SW): 4 NPC stars with RU {1,2,2,3} = 8 RU
        - Q4 (SE): 4 NPC stars with RU {1,2,2,3} = 8 RU
-    4. Shuffle star IDs (A-P) and assign to stars in generation order
+    4. Shuffle star IDs (A-S) and assign to stars in generation order
     5. Assign star names deterministically based on star ID
     6. Initialize NPC ships = base_ru for each NPC star
     7. Create initial player objects with fog-of-war
@@ -134,7 +135,7 @@ def generate_map(seed: int) -> Game:
             npc_stars.append({"position": position, "ru": ru_value})
 
     # Shuffle star IDs for random assignment
-    star_ids = list("ABCDEFGHIJKLMNOP")
+    star_ids = list("ABCDEFGHIJKLMNOPRS")
     rng.shuffle(star_ids)
 
     # Create stars list
@@ -170,7 +171,7 @@ def generate_map(seed: int) -> Game:
         )
     )
 
-    # Add NPC stars (14 stars)
+    # Add NPC stars (16 stars)
     for i, npc_data in enumerate(npc_stars):
         star_id = star_ids[i + 2]  # Offset by 2 for home stars
         stars.append(

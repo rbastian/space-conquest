@@ -5,8 +5,6 @@ get display names for players in the UI.
 """
 
 from random import Random
-from typing import Optional
-
 
 # Admiral surname pool (10 names)
 ADMIRAL_SURNAMES = [
@@ -83,7 +81,7 @@ def select_admiral_name(game_seed: int, model_id: str) -> str:
 
 
 def get_player_display_name(
-    player_id: str, game_seed: Optional[int] = None, model_id: Optional[str] = None
+    player_id: str, game_seed: int | None = None, model_id: str | None = None
 ) -> str:
     """Get display name for a player.
 

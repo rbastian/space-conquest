@@ -289,10 +289,7 @@ def test_no_production_after_rebellion():
             assert star.stationed_ships.get("p1", 0) == 0
             assert len(rebellion_events) == 1
             break
-        elif (
-            star.owner == "p1"
-            and star.stationed_ships.get("p1", 0) != initial_garrison + 3
-        ):
+        elif star.owner == "p1" and star.stationed_ships.get("p1", 0) != initial_garrison + 3:
             # Rebellion occurred, garrison won, but no production beyond combat result
             # This is harder to verify, but if garrison is not exactly initial + 3, likely rebellion
             assert len(rebellion_events) == 1
@@ -395,9 +392,7 @@ def test_rebellion_probability():
 
     # Check rebellion rate is approximately 50% (within 10% margin)
     rebellion_rate = rebellion_count / trials
-    assert 0.4 < rebellion_rate < 0.6, (
-        f"Rebellion rate {rebellion_rate:.2%} outside expected range"
-    )
+    assert 0.4 < rebellion_rate < 0.6, f"Rebellion rate {rebellion_rate:.2%} outside expected range"
 
 
 def test_production_initializes_stationed_ships():
@@ -479,9 +474,7 @@ def test_home_star_immune_to_rebellion():
             assert home_star.stationed_ships["p1"] == expected_garrison
 
     # No rebellions should have occurred at home stars
-    assert rebellion_count == 0, (
-        f"Home star rebelled {rebellion_count} times across 1000 rolls!"
-    )
+    assert rebellion_count == 0, f"Home star rebelled {rebellion_count} times across 1000 rolls!"
 
 
 def test_home_star_immunity_both_players():
@@ -573,6 +566,4 @@ def test_non_home_stars_still_rebel():
         non_home_star.npc_ships = 0
 
     # Non-home stars should still be able to rebel
-    assert rebellion_occurred, (
-        "Non-home star never rebelled (immunity incorrectly applied?)"
-    )
+    assert rebellion_occurred, "Non-home star never rebelled (immunity incorrectly applied?)"

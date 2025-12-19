@@ -6,13 +6,13 @@ into Order objects that can be executed by the game engine.
 
 import re
 from enum import Enum
-from typing import List, Optional
 
 from ..models.order import Order
 
 
 class ErrorType(Enum):
     """Classification of order input errors."""
+
     UNKNOWN_COMMAND = "unknown_command"
     SYNTAX_ERROR = "syntax_error"
     VALIDATION_ERROR = "validation_error"
@@ -36,7 +36,7 @@ class OrderParseError(Exception):
 class CommandParser:
     """Parse natural language commands into Orders."""
 
-    def parse(self, command: str) -> Optional[Order]:
+    def parse(self, command: str) -> Order | None:
         """Parse a command string into an Order.
 
         Supported formats:
@@ -90,25 +90,37 @@ class CommandParser:
             first_word = cmd.split()[0] if cmd.split() else ""
 
             # Check if first word looks like it could be a command attempt
-            known_commands = ["move", "done", "list", "clear", "help", "status", "quit",
-                            "end", "ls", "reset", "h", "st", "exit", "q", "pass"]
+            known_commands = [
+                "move",
+                "done",
+                "list",
+                "clear",
+                "help",
+                "status",
+                "quit",
+                "end",
+                "ls",
+                "reset",
+                "h",
+                "st",
+                "exit",
+                "q",
+                "pass",
+            ]
 
             # If first word is not recognized at all, it's unknown command
             if first_word not in known_commands and not first_word.isdigit():
-                raise OrderParseError(
-                    ErrorType.UNKNOWN_COMMAND,
-                    f"Unknown command: '{first_word}'"
-                )
+                raise OrderParseError(ErrorType.UNKNOWN_COMMAND, f"Unknown command: '{first_word}'")
             else:
                 # Otherwise it's a syntax error (recognized pattern but invalid format)
                 raise OrderParseError(
                     ErrorType.SYNTAX_ERROR,
-                    "Syntax error: invalid command format\nCorrect format: move <ships> from <star> to <star>"
+                    "Syntax error: invalid command format\nCorrect format: move <ships> from <star> to <star>",
                 )
 
         return order
 
-    def _parse_move_pattern(self, cmd: str) -> Optional[Order]:
+    def _parse_move_pattern(self, cmd: str) -> Order | None:
         """Parse 'move <num> ships from <star> to <star>' pattern.
 
         Args:
@@ -133,8 +145,7 @@ class CommandParser:
             # Check for zero or negative ships before creating Order
             if ships <= 0:
                 raise OrderParseError(
-                    ErrorType.SYNTAX_ERROR,
-                    f"Invalid ship count: must be positive (got {ships})"
+                    ErrorType.SYNTAX_ERROR, f"Invalid ship count: must be positive (got {ships})"
                 )
             from_star = match.group(2).upper()
             to_star = match.group(3).upper()
@@ -147,7 +158,7 @@ class CommandParser:
         if len(parts) < 2:
             raise OrderParseError(
                 ErrorType.SYNTAX_ERROR,
-                "Syntax error: invalid command format\nCorrect format: move <ships> from <star> to <star>"
+                "Syntax error: invalid command format\nCorrect format: move <ships> from <star> to <star>",
             )
 
         # Check if second part is a number
@@ -158,62 +169,60 @@ class CommandParser:
             ship_count = int(ship_part)
         except ValueError:
             raise OrderParseError(
-                ErrorType.SYNTAX_ERROR,
-                f"Invalid ship count: '{ship_part}' is not a number"
+                ErrorType.SYNTAX_ERROR, f"Invalid ship count: '{ship_part}' is not a number"
             )
 
         if ship_count <= 0:
             raise OrderParseError(
-                ErrorType.SYNTAX_ERROR,
-                f"Invalid ship count: must be positive (got {ship_count})"
+                ErrorType.SYNTAX_ERROR, f"Invalid ship count: must be positive (got {ship_count})"
             )
 
         # Check for 'from' keyword
-        if 'from' not in parts:
+        if "from" not in parts:
             # Check for common typos
-            if 'form' in parts:
+            if "form" in parts:
                 raise OrderParseError(
                     ErrorType.SYNTAX_ERROR,
-                    "Syntax error: did you mean 'from'? Got 'form'\nCorrect format: move <ships> from <star> to <star>"
+                    "Syntax error: did you mean 'from'? Got 'form'\nCorrect format: move <ships> from <star> to <star>",
                 )
             else:
                 raise OrderParseError(
                     ErrorType.SYNTAX_ERROR,
-                    "Syntax error: expected 'from' after ship count\nCorrect format: move <ships> from <star> to <star>"
+                    "Syntax error: expected 'from' after ship count\nCorrect format: move <ships> from <star> to <star>",
                 )
 
         # Check for 'to' keyword
-        if 'to' not in parts:
+        if "to" not in parts:
             raise OrderParseError(
                 ErrorType.SYNTAX_ERROR,
-                "Syntax error: expected 'to' after origin star\nCorrect format: move <ships> from <star> to <star>"
+                "Syntax error: expected 'to' after origin star\nCorrect format: move <ships> from <star> to <star>",
             )
 
         # Get indices
-        from_idx = parts.index('from')
-        to_idx = parts.index('to')
+        from_idx = parts.index("from")
+        to_idx = parts.index("to")
 
         # Check for missing star after 'from'
-        if from_idx + 1 >= len(parts) or parts[from_idx + 1] == 'to':
+        if from_idx + 1 >= len(parts) or parts[from_idx + 1] == "to":
             raise OrderParseError(
                 ErrorType.SYNTAX_ERROR,
-                "Syntax error: missing origin star ID after 'from'\nCorrect format: move <ships> from <star> to <star>"
+                "Syntax error: missing origin star ID after 'from'\nCorrect format: move <ships> from <star> to <star>",
             )
 
         # Check for missing star after 'to'
         if to_idx + 1 >= len(parts):
             raise OrderParseError(
                 ErrorType.SYNTAX_ERROR,
-                "Syntax error: missing destination star ID after 'to'\nCorrect format: move <ships> from <star> to <star>"
+                "Syntax error: missing destination star ID after 'to'\nCorrect format: move <ships> from <star> to <star>",
             )
 
         # If we got here, there's some other syntax issue
         raise OrderParseError(
             ErrorType.SYNTAX_ERROR,
-            "Syntax error: invalid command format\nCorrect format: move <ships> from <star> to <star>"
+            "Syntax error: invalid command format\nCorrect format: move <ships> from <star> to <star>",
         )
 
-    def _parse_attack_pattern(self, cmd: str) -> Optional[Order]:
+    def _parse_attack_pattern(self, cmd: str) -> Order | None:
         """Parse 'attack <star> with <num> from <star>' pattern.
 
         Args:
@@ -234,7 +243,7 @@ class CommandParser:
 
         return None
 
-    def _parse_simple_pattern(self, cmd: str) -> Optional[Order]:
+    def _parse_simple_pattern(self, cmd: str) -> Order | None:
         """Parse '<num> from <star> to <star>' pattern.
 
         Args:
@@ -260,8 +269,7 @@ class CommandParser:
             # Check for zero or negative ships before creating Order
             if ships <= 0:
                 raise OrderParseError(
-                    ErrorType.SYNTAX_ERROR,
-                    f"Invalid ship count: must be positive (got {ships})"
+                    ErrorType.SYNTAX_ERROR, f"Invalid ship count: must be positive (got {ships})"
                 )
             from_star = match.group(2).upper()
             to_star = match.group(3).upper()
@@ -277,50 +285,49 @@ class CommandParser:
 
         if ship_count <= 0:
             raise OrderParseError(
-                ErrorType.SYNTAX_ERROR,
-                f"Invalid ship count: must be positive (got {ship_count})"
+                ErrorType.SYNTAX_ERROR, f"Invalid ship count: must be positive (got {ship_count})"
             )
 
         # Similar diagnostic logic as move pattern
-        if 'from' not in parts:
-            if 'form' in parts:
+        if "from" not in parts:
+            if "form" in parts:
                 raise OrderParseError(
                     ErrorType.SYNTAX_ERROR,
-                    "Syntax error: did you mean 'from'? Got 'form'\nCorrect format: <ships> from <star> to <star>"
+                    "Syntax error: did you mean 'from'? Got 'form'\nCorrect format: <ships> from <star> to <star>",
                 )
             else:
                 raise OrderParseError(
                     ErrorType.SYNTAX_ERROR,
-                    "Syntax error: expected 'from' after ship count\nCorrect format: <ships> from <star> to <star>"
+                    "Syntax error: expected 'from' after ship count\nCorrect format: <ships> from <star> to <star>",
                 )
 
-        if 'to' not in parts:
+        if "to" not in parts:
             raise OrderParseError(
                 ErrorType.SYNTAX_ERROR,
-                "Syntax error: expected 'to' after origin star\nCorrect format: <ships> from <star> to <star>"
+                "Syntax error: expected 'to' after origin star\nCorrect format: <ships> from <star> to <star>",
             )
 
-        from_idx = parts.index('from')
-        to_idx = parts.index('to')
+        from_idx = parts.index("from")
+        to_idx = parts.index("to")
 
-        if from_idx + 1 >= len(parts) or parts[from_idx + 1] == 'to':
+        if from_idx + 1 >= len(parts) or parts[from_idx + 1] == "to":
             raise OrderParseError(
                 ErrorType.SYNTAX_ERROR,
-                "Syntax error: missing origin star ID after 'from'\nCorrect format: <ships> from <star> to <star>"
+                "Syntax error: missing origin star ID after 'from'\nCorrect format: <ships> from <star> to <star>",
             )
 
         if to_idx + 1 >= len(parts):
             raise OrderParseError(
                 ErrorType.SYNTAX_ERROR,
-                "Syntax error: missing destination star ID after 'to'\nCorrect format: <ships> from <star> to <star>"
+                "Syntax error: missing destination star ID after 'to'\nCorrect format: <ships> from <star> to <star>",
             )
 
         raise OrderParseError(
             ErrorType.SYNTAX_ERROR,
-            "Syntax error: invalid command format\nCorrect format: <ships> from <star> to <star>"
+            "Syntax error: invalid command format\nCorrect format: <ships> from <star> to <star>",
         )
 
-    def parse_multiple(self, command: str) -> List[Order]:
+    def parse_multiple(self, command: str) -> list[Order]:
         """Parse multiple orders from a single command string.
 
         Orders can be separated by semicolons, commas, or 'and'.

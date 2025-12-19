@@ -1,7 +1,7 @@
 """Test that the display shows fleet arrival turns correctly."""
 
-from io import StringIO
 import sys
+from io import StringIO
 
 from src.interface.display import DisplayManager
 from src.models.fleet import Fleet

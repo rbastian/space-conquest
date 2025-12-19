@@ -6,7 +6,7 @@ enabling game persistence and replay functionality.
 
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from ..models.fleet import Fleet
 from ..models.game import Game
@@ -66,14 +66,14 @@ def load_game(filepath: str) -> Game:
         path = state_dir / filepath
 
     # Read from file
-    with open(path, "r") as f:
+    with open(path) as f:
         game_dict = json.load(f)
 
     # Deserialize game state
     return _deserialize_game(game_dict)
 
 
-def _serialize_game(game: Game) -> Dict[str, Any]:
+def _serialize_game(game: Game) -> dict[str, Any]:
     """Convert Game object to JSON-compatible dictionary.
 
     Args:
@@ -95,7 +95,7 @@ def _serialize_game(game: Game) -> Dict[str, Any]:
     }
 
 
-def _deserialize_game(data: Dict[str, Any]) -> Game:
+def _deserialize_game(data: dict[str, Any]) -> Game:
     """Reconstruct Game object from dictionary.
 
     Args:
@@ -131,7 +131,7 @@ def _deserialize_game(data: Dict[str, Any]) -> Game:
     return game
 
 
-def _serialize_star(star: Star) -> Dict[str, Any]:
+def _serialize_star(star: Star) -> dict[str, Any]:
     """Convert Star to dictionary."""
     return {
         "id": star.id,
@@ -145,7 +145,7 @@ def _serialize_star(star: Star) -> Dict[str, Any]:
     }
 
 
-def _deserialize_star(data: Dict[str, Any]) -> Star:
+def _deserialize_star(data: dict[str, Any]) -> Star:
     """Reconstruct Star from dictionary."""
     return Star(
         id=data["id"],
@@ -159,7 +159,7 @@ def _deserialize_star(data: Dict[str, Any]) -> Star:
     )
 
 
-def _serialize_fleet(fleet: Fleet) -> Dict[str, Any]:
+def _serialize_fleet(fleet: Fleet) -> dict[str, Any]:
     """Convert Fleet to dictionary."""
     return {
         "id": fleet.id,
@@ -171,7 +171,7 @@ def _serialize_fleet(fleet: Fleet) -> Dict[str, Any]:
     }
 
 
-def _deserialize_fleet(data: Dict[str, Any]) -> Fleet:
+def _deserialize_fleet(data: dict[str, Any]) -> Fleet:
     """Reconstruct Fleet from dictionary."""
     return Fleet(
         id=data["id"],
@@ -183,7 +183,7 @@ def _deserialize_fleet(data: Dict[str, Any]) -> Fleet:
     )
 
 
-def _serialize_player(player: Player) -> Dict[str, Any]:
+def _serialize_player(player: Player) -> dict[str, Any]:
     """Convert Player to dictionary."""
     return {
         "id": player.id,
@@ -193,7 +193,7 @@ def _serialize_player(player: Player) -> Dict[str, Any]:
     }
 
 
-def _deserialize_player(data: Dict[str, Any]) -> Player:
+def _deserialize_player(data: dict[str, Any]) -> Player:
     """Reconstruct Player from dictionary."""
     return Player(
         id=data["id"],

@@ -6,7 +6,6 @@ from src.agent.langgraph_player import LangGraphPlayer
 from src.agent.middleware import (
     assess_threat_level,
     filter_tools_by_game_state,
-    trim_message_history,
     update_game_context_from_observation,
 )
 from src.agent.prompts import get_system_prompt
@@ -90,8 +89,8 @@ class TestMiddleware:
         threat = assess_threat_level(context)
         assert threat == "low"
 
-    def test_filter_tools_turn_1(self):
-        """Test tool filtering on turn 1 (no memory_query)."""
+    def test_filter_tools_simplified_architecture(self):
+        """Test tool filtering in simplified architecture (only submit_orders)."""
         context: GameContext = {
             "turn": 1,
             "game_phase": "early",
@@ -115,40 +114,9 @@ class TestMiddleware:
 
         tools = filter_tools_by_game_state(state)
 
-        # Turn 1: should not have memory_query
-        assert "memory_query" not in tools
+        # Simplified architecture: only submit_orders tool exists
         assert "submit_orders" in tools
-        assert "get_observation" in tools
-
-    def test_filter_tools_after_submission(self):
-        """Test tool filtering after orders submitted."""
-        context: GameContext = {
-            "turn": 5,
-            "game_phase": "early",
-            "threat_level": "low",
-            "controlled_stars_count": 2,
-            "total_production": 6,
-            "total_ships": 10,
-            "enemy_stars_known": 0,
-            "nearest_enemy_distance": None,
-            "home_garrison": 5,
-            "orders_submitted": True,  # Orders submitted
-        }
-
-        state: AgentState = {
-            "messages": [],
-            "game_context": context,
-            "available_tools": [],
-            "error_count": 0,
-            "last_error": None,
-        }
-
-        tools = filter_tools_by_game_state(state)
-
-        # After submission: should not have submit_orders
-        assert "submit_orders" not in tools
-        assert "memory_query" in tools  # Turn > 1
-        assert "get_observation" in tools
+        assert len(tools) == 1
 
     def test_update_game_context_from_observation(self):
         """Test extracting game context from observation."""
@@ -186,7 +154,7 @@ class TestMiddleware:
         context = update_game_context_from_observation(observation, 5, "A")
 
         assert context["turn"] == 5
-        assert context["game_phase"] == "early"  # Turn 5 is early
+        assert context["game_phase"] == "mid"  # Enemy found at distance 4 = mid game
         assert context["controlled_stars_count"] == 3
         assert context["total_production"] == 8
         assert context["total_ships"] == 25
@@ -201,38 +169,39 @@ class TestDynamicPrompts:
 
     def test_system_prompt_early_game(self):
         """Test early game prompt includes early game guidance."""
-        prompt = get_system_prompt(game_phase="early", threat_level="low", turn=3)
+        prompt = get_system_prompt(game_phase="early", threat_level="low")
 
         assert "EARLY GAME" in prompt
-        assert "Aggressive expansion phase" in prompt
+        assert "MAXIMUM AGGRESSION" in prompt
 
     def test_system_prompt_mid_game(self):
         """Test mid game prompt includes mid game guidance."""
-        prompt = get_system_prompt(game_phase="mid", threat_level="medium", turn=15)
+        prompt = get_system_prompt(game_phase="mid", threat_level="medium")
 
         assert "MID GAME" in prompt
-        assert "Consolidation phase" in prompt
+        assert "ASSAULT PHASE" in prompt
 
     def test_system_prompt_late_game(self):
         """Test late game prompt includes late game guidance."""
-        prompt = get_system_prompt(game_phase="late", threat_level="high", turn=35)
+        prompt = get_system_prompt(game_phase="late", threat_level="high")
 
         assert "LATE GAME" in prompt
-        assert "Endgame phase" in prompt
+        assert "DECISIVE STRIKE" in prompt
 
     def test_system_prompt_critical_threat(self):
         """Test critical threat prompt includes urgent guidance."""
-        prompt = get_system_prompt(game_phase="mid", threat_level="critical", turn=10)
+        prompt = get_system_prompt(game_phase="mid", threat_level="critical")
 
-        assert "CRITICAL THREAT" in prompt
-        assert "IMMEDIATE ACTION REQUIRED" in prompt
+        assert "ENEMY CLOSE" in prompt
+        assert "CRITICAL SITUATION" in prompt
+        assert "INSTANT GAME OVER" in prompt
 
-    def test_system_prompt_turn_1(self):
-        """Test turn 1 prompt includes first turn guidance."""
-        prompt = get_system_prompt(game_phase="early", threat_level="low", turn=1)
+    def test_system_prompt_early_game_provides_guidance(self):
+        """Test early game prompt provides expansion guidance."""
+        prompt = get_system_prompt(game_phase="early", threat_level="low")
 
-        assert "TURN 1 SPECIAL" in prompt
-        assert "first move" in prompt
+        assert "EARLY GAME" in prompt
+        assert "MAXIMUM AGGRESSION" in prompt
 
     def test_system_prompt_no_context(self):
         """Test prompt without context still works."""
@@ -281,28 +250,6 @@ class TestLangGraphPlayer:
         """Test that graph has correct structure."""
         # Graph should have nodes
         assert player.graph is not None
-
-        # Should be able to invoke with initial state
-        from langchain_core.messages import HumanMessage
-
-        initial_state: AgentState = {
-            "messages": [HumanMessage(content="Test message")],
-            "game_context": {
-                "turn": 1,
-                "game_phase": "early",
-                "threat_level": "low",
-                "controlled_stars_count": 1,
-                "total_production": 4,
-                "total_ships": 4,
-                "enemy_stars_known": 0,
-                "nearest_enemy_distance": None,
-                "home_garrison": 4,
-                "orders_submitted": False,
-            },
-            "available_tools": [],
-            "error_count": 0,
-            "last_error": None,
-        }
 
         # Graph should execute without errors (with mock client)
         # Note: We can't easily test full execution without a real game state

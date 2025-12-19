@@ -153,7 +153,9 @@ def test_fleet_in_transit_shows_correct_arrival_turn():
     #   - New formula: 1 + 1 = Turn 2 (correct - fleet will arrive in Turn 2 Phase 1)
 
     # Verify the fleet was created with correct dist_remaining
-    assert fleet.dist_remaining == 1, f"Fleet should have dist_remaining=1, got {fleet.dist_remaining}"
+    assert fleet.dist_remaining == 1, (
+        f"Fleet should have dist_remaining=1, got {fleet.dist_remaining}"
+    )
 
 
 def test_fleet_arrives_in_correct_turn_distance_3():
@@ -242,6 +244,8 @@ def test_fleet_arrives_in_correct_turn_distance_3():
     # Phase 1 decremented dist_remaining from 1 → 0, fleet arrived during Turn 3
     assert game.turn == 4
     assert len(game.fleets) == 0  # Fleet arrived and removed
-    assert star_b.stationed_ships.get("p1", 0) > 0  # Ships arrived (some may have been lost in combat)
+    assert (
+        star_b.stationed_ships.get("p1", 0) > 0
+    )  # Ships arrived (some may have been lost in combat)
 
     # Verify the fleet arrived in "Turn 3" (during the 3rd execution, even though counter is now 4)

@@ -6,11 +6,13 @@ Based on the LLM Player 2 Agent specification.
 
 SYSTEM_PROMPT_BASE = """You are Player 2 in Space Conquest, a turn-based 4X strategy game.
 
-VICTORY CONDITIONS (THE RACE):
+VICTORY CONDITIONS (OFFENSE WINS GAMES):
 - You WIN by capturing Player 1's Home Star FIRST.
-- You LOSE if Player 1 captures YOUR Home Star FIRST.
-- This is a RACE: first to capture enemy home wins; first to lose their home loses immediately.
-- ALL other achievements (territory, production, fleet size) are IRRELEVANT if you lose your home.
+- You LOSE if Player 1 captures YOUR Home Star FIRST - INSTANT GAME OVER, no recovery.
+- This is a RACE: first to capture enemy home wins immediately.
+- CRITICAL INSIGHT: The best defense is a strong offense. If you capture their home first, your home's garrison becomes irrelevant.
+- Defense is a TRAP: Playing defensively means letting the opponent build up forces. Attack first, attack hard, attack constantly.
+- EXCEPTION: If enemy forces are within striking distance (≤3 parsecs) AND you cannot win the race to their home, you MUST defend. Losing your home = instant defeat.
 
 CORE RULES (IMMUTABLE):
 - Production: Each star you control automatically produces ships each turn equal to its RU (Home=4 RU; NPC=1–3 RU). Production is automatic - no garrison required.
@@ -31,31 +33,47 @@ TURN EXECUTION PHASES:
 5. Submit orders (players send fleets)
 6. Production (controlled stars produce new ships = star's RU)
 
-TOOLS (HOW TO USE):
-- Always call get_observation() at the start of your turn to get the current state under fog-of-war. The returned stars list is sorted by distance_from_home ascending. Use that field for proximity.
-- IMPORTANT: get_observation() returns 'active_threat_vectors' - pre-calculated threats from enemy positions to your home. Review these EVERY turn to ensure home defense is adequate.
-- CRITICAL: ALWAYS use simulate_combat(attacker_ships, defender_ships) before planning ANY attack. Combat is deterministic - never guess outcomes.
-- Use calculate_force_requirements(defenders, desired_survivors) to determine exact force needed for attacks.
-- Use analyze_threat_landscape(target_star) for comprehensive threat analysis including nearby enemies and recommended force.
-- Use query_star(ref) if you need details on a particular star.
-- Use propose_orders(draft) to validate before committing.
-- Use submit_orders(orders) at most once per turn after validation.
-- Use memory_query(table, filter) for battle/discovery history to size re-attacks.
+TOOL USAGE (MANDATORY):
+- The game state is provided to you at the start of each turn in the user message.
+- YOU MUST CALL the submit_orders tool to submit your moves - this is the ONLY way to play!
+- Do NOT just write "submit_orders(...)" as text - you must ACTUALLY USE THE TOOL
+- The tool validates your orders (catches errors like over-committing ships) and submits them
+- If validation fails, the tool returns errors - FIX YOUR ORDERS and call submit_orders again
+- Can only be called once per turn (after successful validation)
+- NOTE: You no longer need get_observation() tool - state is in user message
 
-MANDATORY COMBAT VERIFICATION:
-Before submitting any attack order, you MUST:
-1. Use simulate_combat() to verify the attack will succeed
-2. Confirm expected survivors are acceptable
-3. Never guess or estimate combat outcomes - always simulate
+MANDATORY COMBAT CALCULATION:
+Before submitting any attack order, you MUST calculate the outcome:
+1. Combat formula: (N+1) attackers beats N defenders
+2. Winner loses ceil(N/2) ships
+3. Calculate expected survivors before attacking
+4. Never guess - use the formula to verify success
 
-If you submit attack orders without simulating combat first, you are making a critical strategic error.
+OVERWHELMING FORCE DOCTRINE (CRITICAL):
+When attacking stars with UNKNOWN defenders (fog-of-war), use OVERWHELMING FORCE:
+- NPC stars have 1-3 defenders (equal to their RU)
+- If you don't know the RU, assume WORST CASE (3 defenders)
+- To guarantee victory against 3 defenders: send 4+ ships minimum
+- NEVER send 2-3 ships to unknown targets - high risk of total loss
+- Example: Unknown star could be 1, 2, or 3 RU
+  * 2 ships vs 1 defender: WIN (1 survivor) ✓
+  * 2 ships vs 2 defenders: WIN (1 survivor) ✓
+  * 2 ships vs 3 defenders: LOSS (0 survivors) ✗ WASTED ATTACK
+- Better: Send 4 ships (guaranteed win against any NPC garrison)
+- Best: Send 5+ ships (guaranteed win with multiple survivors)
 
-MANDATORY HOME DEFENSE VERIFICATION:
-Before submitting orders, you MUST verify:
-1. Calculate max enemy strike force from stars within 4 parsecs of home
-2. Confirm home garrison > enemy strike capability
-3. If insufficient: recall fleets or redirect new production to home defense
-4. Remember: One successful enemy attack on home = instant game loss
+Combat Examples:
+- Attack 3 RU star with 4 ships: 4 beats 3, you win with 4 - ceil(3/2) = 2 survivors
+- Attack 2 RU star with 3 ships: 3 beats 2, you win with 3 - ceil(2/2) = 2 survivors
+- Attack unknown star with 4 ships: Guaranteed win against any NPC garrison (1-3)
+
+AGGRESSIVE FORCE CONSOLIDATION:
+Your strategy is ATTACK, not defend:
+1. Consolidate ALL available ships into one massive battle fleet
+2. Keep only minimum garrisons (RU value) at captured stars to prevent rebellions
+3. Home star can safely have 0 garrison early game - opponent is 8+ parsecs away
+4. BUILD THE BIGGEST FLEET POSSIBLE and march it toward enemy territory
+5. The goal is overwhelming force at the enemy's home star, not distributed defense
 
 OUTPUT / ACTION CONTRACT:
 Respond with one of:
@@ -68,17 +86,49 @@ Keep garrisons ≥ RU on captured NPC stars to prevent rebellions (home stars ne
 Respect fog-of-war; do not fabricate RU or enemy positions.
 If you choose to pass, send {"turn": <int>, "moves": []}.
 
-EARLY GAME STRATEGY:
-Early game (T1-5): Home is safe (opponent 8+ parsecs away, high hyperspace risk, unknown location).
-Therefore, you can safely send all ships from home for aggressive expansion.
-As enemy proximity increases, shift to defensive positioning (gate condition applies).
-
 FLEET CONCENTRATION (CRITICAL):
 Combat is winner-take-all deterministic. Always send fleets as single concentrated forces:
 - One 10-ship fleet beats 5 defenders, loses 3 ships (ceil(5/2)), nets 7 survivors.
 - Two 5-ship fleets arriving separately: first fleet (5 vs 5) ties with mutual destruction, second fleet captures with 5 survivors (less efficient).
 - RULE: When attacking the same star on the same turn, send ONE combined fleet, not multiple small fleets.
 - Exception: Send multiple fleets only if they target DIFFERENT stars or arrive on DIFFERENT turns.
+
+FORCE CONSOLIDATION FOR ATTACK (CRITICAL):
+Create ONE overwhelming battle fleet, not scattered garrisons:
+
+OFFENSIVE FORCE POSITIONING:
+1. Captured NPC Stars: ONLY minimum garrison (RU value) to prevent rebellion
+   - 1 RU star = 1 ship garrison
+   - 2 RU star = 2 ships garrison
+   - 3 RU star = 3 ships garrison
+   - NEVER leave extra ships sitting idle at these stars
+2. Home Star: 0 ships early/mid game - send EVERYTHING to attack fleet
+   - Production goes directly into attack fleet
+   - Don't hoard ships at home, they do nothing there
+   - EXCEPTION: If THREAT ASSESSMENT shows CRITICAL threats (enemy within 3 parsecs with superior force), keep sufficient garrison to defend. Losing your home = instant game over.
+3. Attack Fleet Assembly Point: ONE star close to enemy territory
+   - Consolidate ALL available forces here
+   - Keep building this fleet bigger every turn
+   - Goal: 20+ ship doomstack that crushes everything
+
+FORCE CONCENTRATION FOR OFFENSE:
+Concentrated attack fleet wins games. Scattered garrisons lose games.
+- 30 ships in one fleet conquers enemy home
+- 10 ships at 3 different stars accomplishes nothing
+
+GOOD EXAMPLE (Aggressive Offense):
+- Attack Fleet Staging (J): 28 ships (YOUR MAIN WEAPON)
+- Captured star (E): 3 ships (minimum garrison, RU=3)
+- Captured star (K): 2 ships (minimum garrison, RU=2)
+- Home (D): 0 ships (empty - all production feeds attack fleet)
+→ Total: 33 ships, with 28-ship doomstack ready to crush enemy home
+
+BAD EXAMPLE (Passive Defense):
+- Home (D): 15 ships (sitting idle, defending nothing)
+- Frontline (E): 8 ships (too weak to attack, too strong for garrison)
+- Frontline (J): 7 ships (same problem)
+- Deep territory (A): 3 ships (wasted)
+→ Total: 33 ships, but scattered and accomplishing nothing
 
 TURN LOOP (CONCISE):
 1. get_observation() → inspect stars (nearby first via distance_from_home).
@@ -103,20 +153,17 @@ def get_system_prompt(
     verbose: bool = False,
     game_phase: str | None = None,
     threat_level: str | None = None,
-    turn: int | None = None,
 ) -> str:
     """Get the system prompt, dynamically adapted to game state.
 
     The prompt is context-aware and adjusts based on:
     - Game phase (early/mid/late game strategy emphasis)
     - Threat level (defensive vs aggressive posture)
-    - Turn number (specific tactical considerations)
 
     Args:
         verbose: If True, include instructions to explain reasoning (uses more tokens)
         game_phase: Current game phase ("early", "mid", "late")
         threat_level: Current threat level ("low", "medium", "high", "critical")
-        turn: Current turn number
 
     Returns:
         System prompt string adapted to current game context
@@ -124,67 +171,59 @@ def get_system_prompt(
     prompt = SYSTEM_PROMPT_BASE
 
     # Add context-specific instructions
-    if game_phase or threat_level or turn:
+    if game_phase or threat_level:
         prompt += "\n\nCURRENT SITUATION ANALYSIS:\n"
 
-        # Phase-specific guidance
+        # Phase-specific guidance (state-based like chess, not turn-based)
         if game_phase == "early":
             prompt += (
-                "- EARLY GAME (T1-10): Aggressive expansion phase. PRIMARY OBJECTIVE: Conquer as many stars as possible "
-                "to maximize RU production and ship output. Send all available ships from home to capture nearby stars. "
-                "Home is safe - opponent is distant (8+ parsecs away) and doesn't know your location. "
-                "The more stars you control early, the more ships you'll have for mid-game conflicts.\n"
+                "- EARLY GAME (No Enemy Contact): MAXIMUM AGGRESSION. PRIMARY OBJECTIVE: Conquer as many stars as possible "
+                "to maximize RU production. Send ALL ships from home immediately - empty your home completely. "
+                "No enemy stars detected yet, so you're safe to expand aggressively. Build production advantage NOW so you can "
+                "create a massive attack fleet for when you locate the enemy.\n"
             )
         elif game_phase == "mid":
             prompt += (
-                "- MID GAME (T11-30): Contact with enemy has occurred. PRIMARY OBJECTIVE: Consolidate attack fleets and "
-                "push towards the enemy's home star. Even if you don't know exactly which star is their home, you know it's "
-                "on the opposite side of the map from yours. Maintain adequate garrisons on captured NPC stars (garrison >= RU) "
-                "while building concentrated strike forces. Create forward staging bases along the path to enemy territory.\n"
+                "- MID GAME (Enemy Located, Distant): ASSAULT PHASE. PRIMARY OBJECTIVE: Build one massive 20+ ship fleet and march it "
+                "toward the enemy home star. You've found enemy territory - now push toward it aggressively. Keep ONLY minimum RU "
+                "garrisons at captured stars. Send EVERYTHING else to your main attack fleet. Create ONE forward staging base, "
+                "consolidate all forces there, then attack.\n"
             )
         elif game_phase == "late":
             prompt += (
-                "- LATE GAME (T31+): Endgame decision point. IF YOU HAVE THE ADVANTAGE: Press the attack with concentrated "
-                "forces towards enemy home star. IF ENEMY HAS ADVANTAGE: Consolidate defenses around your home, maintain RU production, "
-                "and look for opportunities. Consider a surprise 'hail mary' attack if you're behind - a bold strike at their home "
-                "may be your only path to victory.\n"
+                "- LATE GAME (Enemy Close, ≤3 Parsecs): DECISIVE STRIKE. Enemy is within striking distance - this is the endgame. "
+                "Calculate the race: Can you capture their home before they capture yours? If YES: commit fully to overwhelming assault. "
+                "If NO: you MUST defend your home while also attacking theirs. Check THREAT ASSESSMENT section - if it shows CRITICAL threats "
+                "that will arrive before you can win, split forces: enough ships to defend home + remaining ships to attack their home.\n"
             )
 
-        # Threat-specific guidance
+        # Threat-specific guidance (reframed as opportunity)
         if threat_level == "critical":
             prompt += (
-                "- CRITICAL THREAT: Enemy forces detected within 2 parsecs of home! "
-                "IMMEDIATE ACTION REQUIRED:\n"
-                "  1. Calculate exact enemy strike capability from nearby stars\n"
-                "  2. Ensure home garrison > enemy potential attack force\n"
-                "  3. Pull back fleets to defend home if necessary\n"
-                "  4. Consider pre-emptive strikes on enemy staging bases\n"
+                "- ENEMY CLOSE: Enemy forces detected within 2 parsecs! CRITICAL SITUATION:\n"
+                "  1. Check THREAT ASSESSMENT section below - if enemy can capture your home before you capture theirs, you MUST defend\n"
+                "  2. If defending: Keep enough ships at home to beat incoming attacks (use N+1 formula)\n"
+                "  3. Simultaneously: Send remaining ships to counter-attack their positions\n"
+                "  4. Find their HOME STAR and race them - first to capture enemy home wins\n"
+                "  5. Remember: Losing your home = INSTANT GAME OVER. Defense is mandatory when you're losing the race.\n"
             )
         elif threat_level == "high":
             prompt += (
-                "- HIGH THREAT: Enemy stars detected 3-4 parsecs from home. "
-                "Increase home defenses. Monitor enemy fleet movements via combat reports. "
-                "Prepare counter-offensive while maintaining defensive reserves.\n"
+                "- ENEMY DETECTED: Enemy stars 3-4 parsecs from home - TARGET ACQUIRED! "
+                "Build your attack fleet and strike their positions. Their presence reveals the direction "
+                "to their home star. Consolidate forces and push toward them aggressively.\n"
             )
         elif threat_level == "medium":
             prompt += (
-                "- MEDIUM THREAT: Enemy presence known but distant (5-6 parsecs). "
-                "Continue expansion but establish defensive perimeter. "
-                "Create forward bases for staging eventual offensive.\n"
+                "- ENEMY DISTANT: Enemy presence 5-6 parsecs away. Perfect attack range! "
+                "Continue expanding toward them, build up your fleet, and prepare for assault. "
+                "Create forward staging base and march toward their territory.\n"
             )
         elif threat_level == "low":
             prompt += (
-                "- LOW THREAT: Enemy distant or unknown (7+ parsecs). "
-                "Focus on aggressive expansion and resource acquisition. "
-                "Scout toward likely enemy locations.\n"
-            )
-
-        # Turn-specific guidance
-        if turn == 1:
-            prompt += (
-                "\n- TURN 1 SPECIAL: This is your first move. Send scouts from home to nearby stars "
-                "to reveal the map. No memory_query available yet (no history). "
-                "Focus on discovering high-RU stars within 3-4 parsecs.\n"
+                "- ENEMY LOCATION UNKNOWN: Enemy distant or undetected (7+ parsecs). "
+                "Expand aggressively in all directions to find them. Scout toward opposite corner "
+                "of map (their likely home). Build fleet strength for eventual assault.\n"
             )
 
     if verbose:
@@ -193,71 +232,260 @@ def get_system_prompt(
     return prompt
 
 
-# Legacy export for backward compatibility
-SYSTEM_PROMPT = SYSTEM_PROMPT_BASE
+def format_game_state_prompt(game, player_id: str) -> str:
+    """Format current game state as a readable text prompt for the LLM.
 
+    This replaces the tool-based observation system with a direct text representation
+    of the game state, reducing cognitive load and token usage.
 
-DECISION_TEMPLATE = """Based on the observation, make your decision following these steps:
+    Args:
+        game: Current Game object
+        player_id: Player ID ("p1" or "p2")
 
-1. ASSESS SITUATION
-   - What stars do I control and what is my production?
-   - What is my home star defense level?
-   - What expansion opportunities exist (unknown/NPC stars)?
-   - Where is the opponent's home star (if known)?
-   - Are any of my stars under-garrisoned (rebellion risk)?
+    Returns:
+        Formatted text string with complete game state
+    """
+    player = game.players[player_id]
+    opponent_id = "p1" if player_id == "p2" else "p2"
+    opponent = game.players[opponent_id]
 
-2. ASSESS ENEMY THREATS (PRE-CALCULATED FOR YOU):
-   - CRITICAL: Review 'active_threat_vectors' from get_observation() output
-   - Each threat vector shows:
-     * Enemy star location and distance to your home
-     * Estimated current enemy force at that position
-     * Turn when enemy could reach your home
-     * Required home garrison to defend (pre-calculated)
-     * Threat severity (critical/high/medium/low)
-   - If active_threat_vectors is non-empty: HOME DEFENSE CHECK IS MANDATORY
-   - Compare your current home garrison vs highest required_home_garrison value
-   - If insufficient: STOP all offensive operations and reinforce home immediately
-   - Additional context from combat history:
-     * Check combats_last_turn for recent enemy activity
-     * Use memory_query(battle_log) for historical enemy patterns
-     * Identify if enemy is expanding aggressively or defensively
+    # Find home star
+    home_star = next((s for s in game.stars if s.id == player.home_star), None)
 
-3. IDENTIFY PRIORITIES (home defense is MANDATORY, not optional)
+    # Categorize stars
+    my_stars = [s for s in game.stars if s.owner == player_id]
+    enemy_stars = [s for s in game.stars if s.owner == opponent_id and s.id in player.visited_stars]
+    npc_stars = [s for s in game.stars if s.owner is None and s.id in player.visited_stars]
+    unknown_stars = [s for s in game.stars if s.id not in player.visited_stars]
 
-   GATE CONDITION (must satisfy FIRST):
-   - Is my home adequately defended against known threats?
-     * Calculate: max enemy strike force from stars within 4 parsecs
-     * Required garrison: enemy_max_strike + buffer (recommend +2 minimum)
-     * If garrison insufficient: PRIORITIZE reinforcement over ALL other goals
-     * Remember: Losing home = instant defeat regardless of other advantages
+    # Count total ships
+    total_ships = sum(star.stationed_ships.get(player_id, 0) for star in my_stars)
+    total_ships += sum(f.ships for f in game.fleets if f.owner == player_id)
 
-   STRATEGIC OBJECTIVES (pursue ONLY if gate condition satisfied):
-   - Expand to high-value targets?
-   - Strike opponent's home (if location known)?
-   - Garrison captured NPC stars to prevent rebellion?
-   - Scout unknown regions for enemy home location?
-   - Build forward staging bases toward enemy territory?
+    # Build prompt
+    lines = [
+        f"### CURRENT TURN: {game.turn}",
+        "",
+        "### 1. MY EMPIRE (Known Data)",
+        f"* **Home Star:** {home_star.name} ({home_star.id}) at ({home_star.x}, {home_star.y})",
+        f"* **Total Ships:** {total_ships}",
+        "* **My Stars:**",
+    ]
 
-   Strategic Pathway Assessment:
-   - If opponent home star location KNOWN: Prioritize stars that establish path toward it
-   - Create "stepping stone" bases at distance 3-5 intervals for staging
-   - Avoid scattering forces across unconnected star clusters
-   - Focus expansion: Better to own 5 stars in a chain than 5 isolated stars
+    # My controlled stars
+    for star in sorted(my_stars, key=lambda s: s.id):
+        ships = star.stationed_ships.get(player_id, 0)
+        danger_tag = (
+            " [DANGER: Under-garrisoned!]"
+            if ships < star.base_ru and star.id != player.home_star
+            else ""
+        )
+        lines.append(
+            f"    - {star.name} ({star.id}): Loc({star.x},{star.y}), RU: {star.base_ru}, Ships: {ships}{danger_tag}"
+        )
 
-4. PLAN MOVES AND VERIFY COMBAT OUTCOMES
-   - From which stars can I send ships?
-   - To which destinations should they go?
-   - CRITICAL: For each attack, use simulate_combat() to verify:
-     * Attack will succeed (attacker_survivors > 0)
-     * Expected losses are acceptable
-     * Survivors sufficient for holding the star
-   - Use calculate_force_requirements() if you need exact force for desired outcome
-   - Use analyze_threat_landscape() to assess tactical situation and nearby threats
-   - Check hyperspace risk for long routes
+    lines.extend(["", "### 2. KNOWN UNIVERSE"])
 
-5. VALIDATE & SUBMIT
-   - Use propose_orders() to check validity
-   - Fix any errors
-   - Call submit_orders() exactly once
+    # Enemy stars
+    if enemy_stars:
+        lines.append("* **Enemy Stars:**")
+        # Sort with enemy home star first, then by star ID
+        sorted_enemy_stars = sorted(
+            enemy_stars,
+            key=lambda s: (
+                s.id != opponent.home_star,
+                s.id,
+            ),  # False sorts before True, so home star comes first
+        )
 
-Remember: Be methodical, respect fog-of-war, assess threats before acting, and prioritize winning over being clever."""
+        home_garrison = home_star.stationed_ships.get(player_id, 0) if home_star else 0
+
+        for star in sorted_enemy_stars:
+            ships = star.stationed_ships.get(opponent_id, 0)
+
+            # Check if this is the enemy's home star (VICTORY OBJECTIVE!)
+            is_enemy_home = star.id == opponent.home_star
+            home_tag = " [ENEMY HOME STAR - CAPTURE TO WIN!!!]" if is_enemy_home else ""
+
+            if home_star:
+                from ..utils.constants import HYPERSPACE_LOSS_PROB
+                from ..utils.distance import chebyshev_distance
+
+                dist = chebyshev_distance(home_star.x, home_star.y, star.x, star.y)
+
+                # Calculate hyperspace loss probability: 1 - (1 - loss_rate)^distance
+                hyperspace_survival_prob = (1 - HYPERSPACE_LOSS_PROB) ** dist
+                hyperspace_loss_prob = (1 - hyperspace_survival_prob) * 100  # Convert to percentage
+
+                # Determine threat level based on distance and relative force
+                if dist <= 3:
+                    threat = "CRITICAL" if ships > home_garrison else "HIGH"
+                elif dist <= 5:
+                    threat = "HIGH" if ships > home_garrison else "MEDIUM"
+                elif dist <= 7:
+                    threat = "MEDIUM" if ships > home_garrison else "LOW"
+                else:
+                    threat = "LOW" if ships > home_garrison else "NO THREAT"
+
+                lines.append(
+                    f"    - {star.name} ({star.id}): Ships: {ships}, Game turns from our home: {dist}, "
+                    f"Hyperspace loss probability: {hyperspace_loss_prob:.2f}%, Threat: {threat}{home_tag}"
+                )
+            else:
+                lines.append(f"    - {star.name} ({star.id}): Ships: {ships}{home_tag}")
+
+    # NPC stars
+    if npc_stars:
+        lines.append("* **Neutral/NPC Stars:**")
+        for star in sorted(npc_stars, key=lambda s: s.id):
+            if home_star:
+                from ..utils.distance import chebyshev_distance
+
+                dist = chebyshev_distance(home_star.x, home_star.y, star.x, star.y)
+                lines.append(
+                    f"    - {star.name} ({star.id}): Loc({star.x},{star.y}), RU: {star.base_ru}, Est. Defenders: {star.base_ru}, Distance from home: {dist} parsecs"
+                )
+            else:
+                lines.append(
+                    f"    - {star.name} ({star.id}): Loc({star.x},{star.y}), RU: {star.base_ru}, Est. Defenders: {star.base_ru}"
+                )
+
+    # Unknown stars
+    if unknown_stars:
+        lines.append("* **Unknown Stars (Fog-of-War):**")
+        for star in sorted(unknown_stars, key=lambda s: s.id):
+            # Calculate distance from home
+            if home_star:
+                from ..utils.distance import chebyshev_distance
+
+                dist = chebyshev_distance(home_star.x, home_star.y, star.x, star.y)
+                lines.append(
+                    f"    - {star.name} ({star.id}): Loc({star.x},{star.y}), Distance from home: {dist} parsecs"
+                )
+            else:
+                lines.append(f"    - {star.name} ({star.id}): Loc({star.x},{star.y})")
+
+    # Fleets in transit (only show MY fleets - enemy fleet movements are hidden by fog-of-war)
+    lines.extend(["", "### 3. FLEETS IN TRANSIT"])
+    my_fleets = [f for f in game.fleets if f.owner == player_id]
+
+    if my_fleets:
+        lines.append("* **My Fleets:**")
+        for fleet in my_fleets:
+            dest_star = next((s for s in game.stars if s.id == fleet.dest), None)
+            dest_name = dest_star.name if dest_star else fleet.dest
+            lines.append(
+                f"    - Fleet {fleet.id}: {fleet.ships} ships heading to {dest_name} ({fleet.dest}), arrives in {fleet.dist_remaining} turns"
+            )
+    else:
+        lines.append("* No fleets currently in transit")
+
+    # Threat Assessment (replaces enemy fleet visibility - fog-of-war compliant)
+    lines.extend(["", "### 4. THREAT ASSESSMENT"])
+    if home_star and enemy_stars:
+        from ..utils.distance import chebyshev_distance
+
+        home_garrison = home_star.stationed_ships.get(player_id, 0)
+
+        # Find enemy stars within 4 parsecs that could threaten home
+        threats = []
+        for star in enemy_stars:
+            dist = chebyshev_distance(home_star.x, home_star.y, star.x, star.y)
+            if dist <= 4:
+                enemy_ships = star.stationed_ships.get(opponent_id, 0)
+                if enemy_ships > home_garrison:
+                    threats.append((star, dist, enemy_ships))
+
+        if threats:
+            lines.append("* **CRITICAL THREATS:**")
+            lines.append(f"    - Your home garrison: {home_garrison} ships")
+            for star, dist, ships in sorted(threats, key=lambda t: t[1]):  # Sort by distance
+                lines.append(
+                    f"    - {star.name} ({star.id}): {ships} ships at {dist} parsecs (can attack in {dist} turns)"
+                )
+            lines.append(
+                "* **WARNING:** Enemy forces within striking distance exceed your home defense!"
+            )
+        else:
+            lines.append("* No immediate threats to home star detected")
+    else:
+        lines.append("* No enemy forces detected yet")
+
+    # Recent events
+    lines.extend(["", "### 5. RECENT EVENTS"])
+    has_events = False
+
+    if game.combats_last_turn:
+        has_events = True
+        lines.append("* **Combat Reports:**")
+        for combat in game.combats_last_turn:
+            if combat.get("star_id") in player.visited_stars:
+                star_name = combat.get("star_name", "Unknown")
+                attacker = combat.get("attacker")
+                defender = combat.get("defender")
+                winner = combat.get("winner")
+
+                # Translate to player perspective
+                attacker_label = (
+                    "You"
+                    if attacker == player_id
+                    else ("Enemy" if attacker == opponent_id else "NPC")
+                )
+                defender_label = (
+                    "You"
+                    if defender == player_id
+                    else ("Enemy" if defender == opponent_id else "NPC")
+                )
+
+                if winner == "attacker":
+                    winner_label = attacker_label
+                elif winner == "defender":
+                    winner_label = defender_label
+                else:
+                    winner_label = "Tie (Mutual Destruction)"
+
+                lines.append(
+                    f"    - Combat at {star_name}: {attacker_label} vs {defender_label} - Winner: {winner_label}"
+                )
+
+    if game.rebellions_last_turn:
+        rebellions = [r for r in game.rebellions_last_turn if r.get("star") in player.visited_stars]
+        if rebellions:
+            has_events = True
+            lines.append("* **Rebellions:**")
+            for reb in rebellions:
+                star_name = reb.get("star_name", "Unknown")
+                outcome = reb.get("outcome", "unknown")
+                lines.append(f"    - Rebellion at {star_name}: {outcome}")
+
+    if game.hyperspace_losses_last_turn:
+        my_losses = [loss for loss in game.hyperspace_losses_last_turn if loss.get("owner") == player_id]
+        if my_losses:
+            has_events = True
+            lines.append("* **Hyperspace Losses:**")
+            for loss in my_losses:
+                ships = loss.get("ships", 0)
+                origin = loss.get("origin", "Unknown")
+                dest = loss.get("dest", "Unknown")
+                lines.append(
+                    f"    - Lost {ships} ships in hyperspace (en route from {origin} to {dest})"
+                )
+
+    if not has_events:
+        lines.append("* No significant events this turn")
+
+    # Instructions
+    lines.extend(
+        [
+            "",
+            "### 6. INSTRUCTIONS",
+            "1. Review the board and plan your moves",
+            "2. CALL the submit_orders tool with your orders (required - this is the ONLY way to submit!)",
+            "3. If the tool returns errors, fix your orders and call submit_orders again",
+            "4. Tool validates and submits in one atomic operation",
+            "",
+            "IMPORTANT: You must ACTUALLY CALL submit_orders(orders=[...]), not write JSON text!",
+        ]
+    )
+
+    return "\n".join(lines)

@@ -3,12 +3,13 @@
 Verifies that both human and LLM players see only the combats they participated in.
 """
 
-import pytest
-from io import StringIO
 import sys
+from io import StringIO
 
-from src.interface.display import DisplayManager
+import pytest
+
 from src.engine.combat import CombatEvent
+from src.interface.display import DisplayManager
 from src.models.game import Game
 from src.models.player import Player
 from src.models.star import Star

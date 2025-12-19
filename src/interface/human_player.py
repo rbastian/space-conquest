@@ -4,13 +4,12 @@ This module provides the HumanPlayer class which handles getting orders
 from human players via command-line interface.
 """
 
-from typing import List
 
 from ..engine.combat import CombatEvent, RebellionEvent
 from ..engine.movement import HyperspaceLoss
 from ..models.game import Game
 from ..models.order import Order
-from .command_parser import CommandParser, OrderParseError, ErrorType
+from .command_parser import CommandParser, ErrorType, OrderParseError
 from .display import DisplayManager
 from .renderer import MapRenderer
 
@@ -118,7 +117,7 @@ class HumanPlayer:
             rebel_survivors=d["rebel_survivors"],
         )
 
-    def get_orders(self, game: Game) -> List[Order]:
+    def get_orders(self, game: Game) -> list[Order]:
         """Get orders from human player via CLI with continuous input flow.
 
         Displays the current game state and prompts the player for orders.
@@ -141,9 +140,7 @@ class HumanPlayer:
         combat_events = None
         if hasattr(game, "combats_last_turn") and game.combats_last_turn:
             # Convert dictionaries to CombatEvent objects
-            combat_events = [
-                self._dict_to_combat_event(d) for d in game.combats_last_turn
-            ]
+            combat_events = [self._dict_to_combat_event(d) for d in game.combats_last_turn]
 
         hyperspace_losses = None
         if hasattr(game, "hyperspace_losses_last_turn") and game.hyperspace_losses_last_turn:
@@ -151,16 +148,12 @@ class HumanPlayer:
             all_losses = [
                 self._dict_to_hyperspace_loss(d) for d in game.hyperspace_losses_last_turn
             ]
-            hyperspace_losses = [
-                loss for loss in all_losses if loss.owner == self.player_id
-            ]
+            hyperspace_losses = [loss for loss in all_losses if loss.owner == self.player_id]
 
         rebellion_events = None
         if hasattr(game, "rebellions_last_turn") and game.rebellions_last_turn:
             # Convert dictionaries to RebellionEvent objects
-            rebellion_events = [
-                self._dict_to_rebellion_event(d) for d in game.rebellions_last_turn
-            ]
+            rebellion_events = [self._dict_to_rebellion_event(d) for d in game.rebellions_last_turn]
 
         self.display.show_turn_summary(
             player, game, combat_events, hyperspace_losses, rebellion_events
@@ -180,7 +173,7 @@ class HumanPlayer:
 
         return orders
 
-    def _get_orders_continuous(self, game: Game, player) -> List[Order]:
+    def _get_orders_continuous(self, game: Game, player) -> list[Order]:
         """Continuous order input loop with command support.
 
         Supports:
@@ -262,16 +255,16 @@ class HumanPlayer:
                     if order is None:
                         # Parser returned None for unrecognized command
                         # This shouldn't happen now with OrderParseError, but keep as fallback
-                        print(self._format_error_message(
-                            ErrorType.UNKNOWN_COMMAND,
-                            f"Unknown command: '{cmd_lower.split()[0] if cmd_lower.split() else cmd_lower}'"
-                        ))
+                        print(
+                            self._format_error_message(
+                                ErrorType.UNKNOWN_COMMAND,
+                                f"Unknown command: '{cmd_lower.split()[0] if cmd_lower.split() else cmd_lower}'",
+                            )
+                        )
                         continue
 
                     # Pre-validate order before queuing
-                    error = self._validate_order_pre_queue(
-                        game, player, order, commitment_tracker
-                    )
+                    error = self._validate_order_pre_queue(game, player, order, commitment_tracker)
 
                     if error:
                         # Validation error - no help hint
@@ -371,7 +364,7 @@ class HumanPlayer:
         return ""  # Valid
 
     def _show_order_queued(
-        self, order: Order, orders: List[Order], commitment_tracker: dict
+        self, order: Order, orders: list[Order], commitment_tracker: dict
     ) -> None:
         """Show feedback after order is queued.
 
@@ -381,19 +374,15 @@ class HumanPlayer:
             commitment_tracker: Dict tracking ships committed per star
         """
         # Show success message
-        print(
-            f"✓ Order queued: {order.ships} ships from {order.from_star} to {order.to_star}"
-        )
+        print(f"✓ Order queued: {order.ships} ships from {order.from_star} to {order.to_star}")
 
         # Show summary line
         order_count = len(orders)
         committed_stars = sorted(commitment_tracker.keys())
-        committed_str = ", ".join(
-            f"{star}({commitment_tracker[star]})" for star in committed_stars
-        )
+        committed_str = ", ".join(f"{star}({commitment_tracker[star]})" for star in committed_stars)
         print(f"  Orders: {order_count} | Committed: {committed_str}")
 
-    def _show_queued_orders(self, orders: List[Order]) -> None:
+    def _show_queued_orders(self, orders: list[Order]) -> None:
         """Show all queued orders.
 
         Args:
@@ -405,18 +394,14 @@ class HumanPlayer:
 
         print("Queued orders:")
         for i, order in enumerate(orders, 1):
-            print(
-                f"  {i}. Move {order.ships} ships: {order.from_star} → {order.to_star}"
-            )
+            print(f"  {i}. Move {order.ships} ships: {order.from_star} → {order.to_star}")
 
     def _show_continuous_help(self) -> None:
         """Show help for continuous input mode."""
         print("\n=== Space Conquest - Command Help ===\n")
         print("Core commands:")
         print("  move <ships> from <star> to <star>  - Queue an order")
-        print(
-            "  done                                 - Submit all queued orders and end turn"
-        )
+        print("  done                                 - Submit all queued orders and end turn")
         print("  list                                 - Show all queued orders")
         print("  clear                                - Remove all queued orders")
         print("  help                                 - Show this help message")

@@ -5,7 +5,7 @@ GRID_X = 12
 GRID_Y = 10
 
 # Star configuration
-NUM_STARS = 16
+NUM_STARS = 18
 HOME_RU = 4
 NPC_RU_RANGE = (1, 3)  # Base RU for NPC stars
 

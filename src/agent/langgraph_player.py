@@ -26,7 +26,6 @@ from .middleware import (
     inject_threat_vector_analysis,
     reset_error_tracking,
     trim_message_history,
-    update_game_context_from_observation,
 )
 from .prompts import get_system_prompt
 from .state_models import AgentState
@@ -163,7 +162,6 @@ class LangGraphPlayer:
                 verbose=self.verbose,
                 game_phase=game_context.get("game_phase"),
                 threat_level=game_context.get("threat_level"),
-                turn=game_context.get("turn"),
             )
 
             # Inject defensive urgency if threat is elevated
@@ -206,11 +204,18 @@ class LangGraphPlayer:
                 # LLM wants to use tools
                 content_blocks = response["content_blocks"]
 
-                # Log reasoning if present
+                # Log LLM thinking at INFO level
+                logger.info("=" * 80)
+                logger.info("LLM RESPONSE:")
+                logger.info("=" * 80)
                 for block in content_blocks:
                     if block.get("type") == "text" and block.get("text"):
-                        provider_name = getattr(self.client, "provider", "LLM").upper()
-                        logger.info(f"[{provider_name}] {block['text']}")
+                        logger.info(block["text"])
+                    elif block.get("type") == "tool_use":
+                        logger.info(
+                            f"[TOOL CALL] {block.get('name')} with input: {block.get('input')}"
+                        )
+                logger.info("=" * 80)
 
                 # Add assistant message to state
                 ai_message = AIMessage(content=content_blocks)
@@ -226,6 +231,12 @@ class LangGraphPlayer:
                 response_text = response.get("response", "")
                 ai_message = AIMessage(content=response_text)
 
+                # Log final response at INFO level
+                logger.info("=" * 80)
+                logger.info("LLM FINAL RESPONSE:")
+                logger.info("=" * 80)
+                logger.info(response_text)
+                logger.info("=" * 80)
                 logger.debug(f"LLM finished: {response['stop_reason']}")
 
                 return {
@@ -285,12 +296,10 @@ class LangGraphPlayer:
 
         # Execute each tool
         tool_results = []
-        observation_data = None
-        threat_vectors = None
         orders_submitted = False
 
         # Critical tools that should halt execution on failure
-        CRITICAL_TOOLS = {"get_observation", "submit_orders"}  # noqa: N806
+        CRITICAL_TOOLS = {"submit_orders"}  # noqa: N806
 
         for tool_call in tool_calls:
             tool_name = tool_call.get("name")
@@ -312,16 +321,6 @@ class LangGraphPlayer:
                     else:
                         preview = result_json[:200] + ("..." if len(result_json) > 200 else "")
                         logger.debug(f"    Result: {preview}")
-
-                # Store observation for context update
-                if tool_name == "get_observation":
-                    observation_data = result
-                    # Extract threat vectors for middleware injection
-                    threat_vectors = result.get("active_threat_vectors", [])
-                    if threat_vectors:
-                        logger.info(
-                            f"Detected {len(threat_vectors)} threat vector(s) from enemy positions"
-                        )
 
                 # Track if orders were submitted
                 if tool_name == "submit_orders":
@@ -361,36 +360,31 @@ class LangGraphPlayer:
                 # Update state with error
                 state = handle_tool_error(state, e, tool_name)
 
-        # Update game context if we got observation
+        # Update game context with orders_submitted flag
         updated_game_context = state.get("game_context", {})
-        if observation_data:
-            # Defensive check: ensure home_star exists
-            if not hasattr(tools.player, "home_star") or not tools.player.home_star:
-                logger.error("Home star ID not found in player object")
-            else:
-                home_star_id = tools.player.home_star
-                # Defensive check: ensure turn exists in observation
-                turn = observation_data.get("turn")
-                if turn is None:
-                    logger.warning("Turn not found in observation data, using current game turn")
-                    turn = tools.game.turn
-
-                updated_game_context = update_game_context_from_observation(
-                    observation_data,
-                    turn,
-                    home_star_id,
-                )
-                logger.debug(
-                    f"Updated context: phase={updated_game_context['game_phase']}, "
-                    f"threat={updated_game_context['threat_level']}"
-                )
-
-        # Update orders_submitted flag if needed (immutable update)
         if orders_submitted:
             updated_game_context = {
                 **updated_game_context,
                 "orders_submitted": True,
             }
+
+        # Log tool results at INFO level
+        logger.info("=" * 80)
+        logger.info("TOOL RESULTS:")
+        logger.info("=" * 80)
+        for result in tool_results:
+            if result.get("type") == "tool_result":
+                content = result.get("content", "")
+                if isinstance(content, str):
+                    # Try to parse JSON for pretty printing
+                    try:
+                        parsed = json.loads(content)
+                        logger.info(json.dumps(parsed, indent=2))
+                    except Exception:
+                        logger.info(content)
+                else:
+                    logger.info(str(content))
+        logger.info("=" * 80)
 
         # Add tool results to messages
         tool_result_message = HumanMessage(content=tool_results)
@@ -398,17 +392,11 @@ class LangGraphPlayer:
         # Reset error tracking on successful execution
         state = reset_error_tracking(state)
 
-        # Store threat vectors in state for next LLM call (if any)
-        updated_state = {
+        return {
             **state,
             "game_context": updated_game_context,
             "messages": [*state["messages"], tool_result_message],
         }
-
-        if threat_vectors is not None:
-            updated_state["_threat_vectors"] = threat_vectors
-
-        return updated_state
 
     def _should_continue(self, state: AgentState) -> Literal["continue", "end"]:
         """Conditional routing: determine if we should continue or end.
@@ -505,16 +493,22 @@ class LangGraphPlayer:
         tools = AgentTools(game, self.player_id)
         tools.reset_turn()
 
-        # Create initial state
+        # Import format function
+        from .prompts import format_game_state_prompt
+
+        # Format game state as text
+        formatted_state = format_game_state_prompt(game, self.player_id)
+
+        # Log the user prompt at INFO level
+        logger.info("=" * 80)
+        logger.info(f"USER PROMPT (Turn {game.turn}):")
+        logger.info("=" * 80)
+        logger.info(formatted_state)
+        logger.info("=" * 80)
+
+        # Create initial state with formatted game state
         initial_state: AgentState = {
-            "messages": [
-                HumanMessage(
-                    content=(
-                        f"It is now turn {game.turn}. "
-                        "Please analyze the game state and submit your orders."
-                    )
-                )
-            ],
+            "messages": [HumanMessage(content=formatted_state)],
             "game_context": {
                 "turn": game.turn,
                 "game_phase": "early",
@@ -544,11 +538,12 @@ class LangGraphPlayer:
         # Save memory back to game for next turn
         game.agent_memory[self.player_id] = tools.memory
 
-        # Get the validated orders
+        # Get orders from tools (if submit_orders was called)
         orders = tools.get_pending_orders()
 
+        # If no orders, LLM is passing the turn
         if orders is None:
-            logger.info("No orders generated, passing turn")
+            logger.info("No orders submitted (LLM passed turn or failed to call submit_orders)")
             return []
 
         logger.info(f"Returning {len(orders)} order(s)")

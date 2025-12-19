@@ -63,19 +63,21 @@ class GameSession:
         # Normal mode: fog-of-war filtering
         human_player = self.game.players[self.human_player_id]
 
-        # Only show stars the human player has visited (fog-of-war)
-        visible_stars = [
-            self._serialize_star(star, visited=True)
-            for star in self.game.stars
-            if star.id in human_player.visited_stars
-        ]
+        # Separate stars by control status
+        controlled_stars = []
+        previously_visited_stars = []
+        unvisited_stars = []
 
-        # Also include unvisited stars but with limited info (position only)
-        unvisited_stars = [
-            self._serialize_star(star, visited=False)
-            for star in self.game.stars
-            if star.id not in human_player.visited_stars
-        ]
+        for star in self.game.stars:
+            if star.owner == self.human_player_id:
+                # Full intel for stars you control
+                controlled_stars.append(self._serialize_star(star, visited=True))
+            elif star.id in human_player.visited_stars:
+                # Limited intel for previously visited stars (name + position only, no ships/owner)
+                previously_visited_stars.append(self._serialize_star(star, visited=False))
+            else:
+                # Minimal intel for unvisited stars (name + position only)
+                unvisited_stars.append(self._serialize_star(star, visited=False))
 
         human_fleets = [
             self._serialize_fleet(fleet)
@@ -83,26 +85,19 @@ class GameSession:
             if fleet.owner == self.human_player_id
         ]
 
-        # Only show AI fleets that are visible (at stars the human has visited or in transit to/from them)
-        visible_ai_fleets = [
-            self._serialize_fleet(fleet)
-            for fleet in self.game.fleets
-            if fleet.owner != self.human_player_id
-            and (
-                fleet.origin in human_player.visited_stars
-                or fleet.dest in human_player.visited_stars
-            )
-        ]
+        # NEVER show enemy fleets - this is critical for fog-of-war
+        # Players should not see enemy fleet movements at all
+        visible_ai_fleets = []
 
         return {
             "turn": self.game.turn,
             "phase": self.phase,
             "winner": self.game.winner,
-            "stars": visible_stars + unvisited_stars,
-            "fleets": human_fleets + visible_ai_fleets,
-            "yourStars": [s for s in visible_stars if s.get("owner") == self.human_player_id],
+            "stars": controlled_stars + previously_visited_stars + unvisited_stars,
+            "fleets": human_fleets,  # Only your own fleets
+            "yourStars": controlled_stars,
             "yourFleets": human_fleets,
-            "aiFleets": visible_ai_fleets,
+            "aiFleets": visible_ai_fleets,  # Empty list - never show enemy fleets
         }
 
     def _serialize_star(self, star, visited: bool = True) -> dict:
@@ -115,11 +110,11 @@ class GameSession:
         Returns:
             Dictionary with star data, limited for unvisited stars
         """
-        # For unvisited stars, only reveal position
+        # For unvisited stars, reveal position and name but hide tactical details
         if not visited:
             return {
                 "id": star.id,
-                "name": "???",  # Unknown name
+                "name": star.name,  # Star names are always visible
                 "x": star.x,
                 "y": star.y,
                 "owner": None,  # Unknown owner
@@ -161,15 +156,39 @@ class GameSession:
         }
 
     def get_last_turn_events(self) -> dict:
-        """Get events from the last turn.
+        """Get events from the last turn, filtered for fog-of-war.
 
         Returns:
             Dictionary with combat, rebellion, and hyperspace loss events
+            visible to the human player (respects fog-of-war)
         """
+        human_player = self.game.players[self.human_player_id]
+
+        # Filter combat events - only show combats at stars the human has visited
+        visible_combats = [
+            combat
+            for combat in self.game.combats_last_turn
+            if combat.get("star_id") in human_player.visited_stars
+        ]
+
+        # Filter hyperspace losses - only show human player's own losses
+        visible_losses = [
+            loss
+            for loss in self.game.hyperspace_losses_last_turn
+            if loss.get("owner") == self.human_player_id
+        ]
+
+        # Filter rebellions - only show rebellions at stars the human controls or has visited
+        visible_rebellions = [
+            rebellion
+            for rebellion in self.game.rebellions_last_turn
+            if rebellion.get("star") in human_player.visited_stars
+        ]
+
         return {
-            "combat": self.game.combats_last_turn,
-            "rebellions": self.game.rebellions_last_turn,
-            "hyperspaceLosses": self.game.hyperspace_losses_last_turn,
+            "combat": visible_combats,
+            "rebellions": visible_rebellions,
+            "hyperspaceLosses": visible_losses,
         }
 
     def validate_orders(self, orders: list[dict]) -> list[str]:
@@ -227,6 +246,17 @@ class GameSession:
     async def execute_turn(self, human_orders: list[dict], ai_orders: list[Order]) -> dict:
         """Execute one complete turn with both players' orders.
 
+        Turn execution order (ensures rebellions check garrison before production):
+        1. Process orders (creates fleets, removes ships from origin stars)
+        2. Movement (fleets move, hyperspace losses occur)
+        3. Combat (resolve battles at all stars)
+        4. Rebellions (check garrison status WITHOUT newly produced ships)
+        5. Victory check and turn increment
+        6. Production (add ships to stars that didn't rebel)
+
+        This order ensures that if you send all ships away from a 3RU star,
+        leaving 0 garrison, the star will rebel before production occurs.
+
         Args:
             human_orders: List of order dicts from human
             ai_orders: List of Order objects from AI
@@ -254,19 +284,24 @@ class GameSession:
             f"AI ({self.ai_player.player_id}): {len(ai_orders)} orders"
         )
 
-        # Execute turn phases
+        # Step 1: Process orders (creates fleets, removes ships from origin stars)
+        self.game = self.executor._process_orders_wrapper(self.game, orders_dict)
+
+        # Step 2: Execute pre-turn logic (movement, combat, rebellions, turn++)
+        # Rebellions happen BEFORE production, so abandoned stars can rebel
         self.game, combat_events, hyperspace_losses, rebellion_events = (
             self.executor.execute_pre_turn_logic(self.game)
         )
+
+        # Step 3: Production (happens AFTER rebellions)
+        # This ensures rebellions check garrison status without newly produced ships
+        self.game = self.executor._process_production_wrapper(self.game)
 
         # Check if game ended
         if self.game.winner:
             logger.info(f"Game {self.id} ended: winner = {self.game.winner}")
             self.phase = "COMPLETED"
             return self.get_last_turn_events()
-
-        # Process orders and production
-        self.game = self.executor.execute_post_turn_logic(self.game, orders_dict)
 
         self.phase = "AWAITING_ORDERS"
 
@@ -360,6 +395,10 @@ class GameSessionManager:
             ai_player=ai_player,
             human_player_id=human_player,
         )
+
+        # Run initial pre-turn logic to advance from turn 0 to turn 1
+        # This matches the CLI behavior where pre-turn logic runs before players see the board
+        session.game, _, _, _ = session.executor.execute_pre_turn_logic(session.game)
 
         self.sessions[game_id] = session
 

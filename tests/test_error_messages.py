@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.interface.command_parser import CommandParser, OrderParseError, ErrorType
+from src.interface.command_parser import CommandParser, ErrorType, OrderParseError
 from src.interface.human_player import HumanPlayer
 from src.models.game import Game
 from src.models.order import Order

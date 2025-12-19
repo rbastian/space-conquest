@@ -4,19 +4,17 @@ This module provides a modern Terminal User Interface using the Textual framewor
 It displays the game map, controlled stars, fleets in transit, and handles player input.
 """
 
-from typing import Optional
 
 from textual.app import App, ComposeResult
-from textual.containers import Container, Vertical, Horizontal
-from textual.widgets import Header, Footer, Static, Input, RichLog
-from textual.reactive import reactive
 from textual.binding import Binding
+from textual.containers import Container, Horizontal
+from textual.widgets import Footer, Header, Input, RichLog, Static
 
 from ..models.game import Game
 from ..models.order import Order
-from .renderer import MapRenderer
+from .command_parser import CommandParser, ErrorType, OrderParseError
 from .display import DisplayManager
-from .command_parser import CommandParser, OrderParseError, ErrorType
+from .renderer import MapRenderer
 
 
 class MapPanel(Static):
@@ -54,6 +52,7 @@ class StarsTable(Static):
 
         import io
         import sys
+
         old_stdout = sys.stdout
         sys.stdout = buffer = io.StringIO()
 
@@ -80,6 +79,7 @@ class FleetsTable(Static):
 
         import io
         import sys
+
         old_stdout = sys.stdout
         sys.stdout = buffer = io.StringIO()
 
@@ -97,13 +97,7 @@ class TerminalPanel(RichLog):
 
     def __init__(self, *args, **kwargs):
         """Initialize terminal panel."""
-        super().__init__(
-            *args,
-            highlight=True,
-            markup=True,
-            wrap=True,
-            **kwargs
-        )
+        super().__init__(*args, highlight=True, markup=True, wrap=True, **kwargs)
 
     def show_command(self, command: str) -> None:
         """Echo the command that was entered.
@@ -307,10 +301,7 @@ class SpaceConquestTUI(App):
             yield self.terminal_panel
             with Horizontal(id="input_row"):
                 yield Static(f"{self.player_id}> ", id="prompt_label")
-                yield Input(
-                    placeholder="",
-                    id="command_input"
-                )
+                yield Input(placeholder="", id="command_input")
 
         yield Footer()
 
@@ -322,7 +313,9 @@ class SpaceConquestTUI(App):
         # Show initial welcome and turn info
         if self.terminal_panel:
             player = self.game.players[self.player_id]
-            self.terminal_panel.show_info(f"[bold cyan]Turn {self.game.turn} - {player.id.upper()}[/bold cyan]")
+            self.terminal_panel.show_info(
+                f"[bold cyan]Turn {self.game.turn} - {player.id.upper()}[/bold cyan]"
+            )
             self.terminal_panel.write("")
 
             # Show combat events from last turn if any (filtered by fog of war)
@@ -333,14 +326,19 @@ class SpaceConquestTUI(App):
                     if star_id and star_id in player.visited_stars:
                         # Convert dict to object for display (simple namespace works)
                         from types import SimpleNamespace
+
                         event = SimpleNamespace(**event_dict)
                         self.terminal_panel.add_combat_report(event, self.game, self.player_id)
 
             # Show hyperspace losses from last turn if any
-            if hasattr(self.game, "hyperspace_losses_last_turn") and self.game.hyperspace_losses_last_turn:
+            if (
+                hasattr(self.game, "hyperspace_losses_last_turn")
+                and self.game.hyperspace_losses_last_turn
+            ):
                 for loss_dict in self.game.hyperspace_losses_last_turn:
                     if loss_dict.get("owner") == self.player_id:
                         from types import SimpleNamespace
+
                         loss = SimpleNamespace(**loss_dict)
                         self.terminal_panel.add_hyperspace_loss(loss, self.game)
 
@@ -450,7 +448,9 @@ class SpaceConquestTUI(App):
             else:
                 terminal.show_info("[bold]Queued orders:[/bold]")
                 for i, order in enumerate(self.orders, 1):
-                    terminal.show_info(f"  {i}. Move {order.ships} ships: {order.from_star} -> {order.to_star}")
+                    terminal.show_info(
+                        f"  {i}. Move {order.ships} ships: {order.from_star} -> {order.to_star}"
+                    )
                 terminal.write("")
             self.set_focus_to_input()
             return
@@ -490,7 +490,9 @@ class SpaceConquestTUI(App):
             if order is None:
                 unknown_cmd = cmd_lower.split()[0] if cmd_lower.split() else cmd_lower
                 terminal.show_response(f"Unknown command: '{unknown_cmd}'", is_error=True)
-                terminal.show_info("Available commands: move, done, list, clear, help, status, quit")
+                terminal.show_info(
+                    "Available commands: move, done, list, clear, help, status, quit"
+                )
                 terminal.write("")
                 self.set_focus_to_input()
                 return
@@ -521,7 +523,9 @@ class SpaceConquestTUI(App):
             message = e.message
             terminal.show_response(f"Error: {message}", is_error=True)
             if e.error_type == ErrorType.UNKNOWN_COMMAND:
-                terminal.show_info("Available commands: move, done, list, clear, help, status, quit")
+                terminal.show_info(
+                    "Available commands: move, done, list, clear, help, status, quit"
+                )
                 terminal.show_info("Example: move 5 ships from A to B")
                 terminal.write("")
             self.set_focus_to_input()
@@ -594,13 +598,23 @@ class SpaceConquestTUI(App):
         terminal.write("")
         terminal.show_info("[bold]Core commands:[/bold]")
         terminal.show_info("  [cyan]move <ships> from <star> to <star>[/cyan]  - Queue an order")
-        terminal.show_info("  [cyan]done[/cyan]                                 - Submit all queued orders and end turn")
-        terminal.show_info("  [cyan]list[/cyan]                                 - Show all queued orders")
-        terminal.show_info("  [cyan]clear[/cyan]                                - Remove all queued orders")
-        terminal.show_info("  [cyan]help[/cyan]                                 - Show this help message")
+        terminal.show_info(
+            "  [cyan]done[/cyan]                                 - Submit all queued orders and end turn"
+        )
+        terminal.show_info(
+            "  [cyan]list[/cyan]                                 - Show all queued orders"
+        )
+        terminal.show_info(
+            "  [cyan]clear[/cyan]                                - Remove all queued orders"
+        )
+        terminal.show_info(
+            "  [cyan]help[/cyan]                                 - Show this help message"
+        )
         terminal.write("")
         terminal.show_info("[bold]Other commands:[/bold]")
-        terminal.show_info("  [cyan]status[/cyan]                               - Show current game status")
+        terminal.show_info(
+            "  [cyan]status[/cyan]                               - Show current game status"
+        )
         terminal.show_info("  [cyan]quit[/cyan]                                 - Exit the game")
         terminal.write("")
         terminal.show_info("[bold]Examples:[/bold]")
@@ -665,22 +679,55 @@ class SpaceConquestTUI(App):
 
 def run_tui_demo():
     """Run a demo of the TUI with a test game state."""
-    from ..models.star import Star
-    from ..models.player import Player
     from ..models.fleet import Fleet
+    from ..models.player import Player
+    from ..models.star import Star
 
     # Create a simple test game state
     stars = [
-        Star(id="A", name="Alpha", x=0, y=0, base_ru=3, owner="p1",
-             stationed_ships={"p1": 10}, npc_ships=0),
-        Star(id="B", name="Beta", x=3, y=2, base_ru=2, owner="p1",
-             stationed_ships={"p1": 5}, npc_ships=0),
-        Star(id="C", name="Gamma", x=6, y=5, base_ru=4, owner=None,
-             stationed_ships={}, npc_ships=8),
-        Star(id="D", name="Delta", x=9, y=7, base_ru=1, owner="p2",
-             stationed_ships={"p2": 3}, npc_ships=0),
-        Star(id="E", name="Epsilon", x=11, y=9, base_ru=2, owner="p2",
-             stationed_ships={"p2": 6}, npc_ships=0),
+        Star(
+            id="A",
+            name="Alpha",
+            x=0,
+            y=0,
+            base_ru=3,
+            owner="p1",
+            stationed_ships={"p1": 10},
+            npc_ships=0,
+        ),
+        Star(
+            id="B",
+            name="Beta",
+            x=3,
+            y=2,
+            base_ru=2,
+            owner="p1",
+            stationed_ships={"p1": 5},
+            npc_ships=0,
+        ),
+        Star(
+            id="C", name="Gamma", x=6, y=5, base_ru=4, owner=None, stationed_ships={}, npc_ships=8
+        ),
+        Star(
+            id="D",
+            name="Delta",
+            x=9,
+            y=7,
+            base_ru=1,
+            owner="p2",
+            stationed_ships={"p2": 3},
+            npc_ships=0,
+        ),
+        Star(
+            id="E",
+            name="Epsilon",
+            x=11,
+            y=9,
+            base_ru=2,
+            owner="p2",
+            stationed_ships={"p2": 6},
+            npc_ships=0,
+        ),
     ]
 
     # Create players with some visited stars
@@ -692,8 +739,7 @@ def run_tui_demo():
 
     # Create a fleet in transit
     fleets = [
-        Fleet(id="f1", owner="p1", origin="A", dest="C", ships=3,
-              dist_remaining=2),
+        Fleet(id="f1", owner="p1", origin="A", dest="C", ships=3, dist_remaining=2),
     ]
 
     # Create game
@@ -703,7 +749,7 @@ def run_tui_demo():
         stars=stars,
         players={"p1": p1, "p2": p2},
         fleets=fleets,
-        p2_model_id="test-model"
+        p2_model_id="test-model",
     )
 
     # Run the TUI (with mouse disabled - we only need keyboard input)

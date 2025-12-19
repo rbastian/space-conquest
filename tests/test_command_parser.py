@@ -29,7 +29,8 @@ def test_parse_move_pattern_without_ships():
 
 def test_parse_send_pattern_removed():
     """Test that 'send' command is no longer supported."""
-    from src.interface.command_parser import OrderParseError, ErrorType
+    from src.interface.command_parser import ErrorType, OrderParseError
+
     parser = CommandParser()
 
     # 'send' command should now raise an error
@@ -124,7 +125,8 @@ def test_parse_quit_aliases():
 
 def test_parse_invalid_command():
     """Test that invalid command raises OrderParseError."""
-    from src.interface.command_parser import OrderParseError, ErrorType
+    from src.interface.command_parser import ErrorType, OrderParseError
+
     parser = CommandParser()
 
     with pytest.raises(OrderParseError) as exc_info:

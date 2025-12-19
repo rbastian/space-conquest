@@ -9,7 +9,6 @@ This module handles:
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional
 
 from ..models.game import Game
 from ..models.star import Star
@@ -27,7 +26,7 @@ class CombatResult:
         defender_survivors: Number of ships remaining for defender
     """
 
-    winner: Optional[str]
+    winner: str | None
     attacker_losses: int
     defender_losses: int
     attacker_survivors: int
@@ -63,13 +62,13 @@ class CombatEvent:
     defender: str
     attacker_ships: int
     defender_ships: int
-    winner: Optional[str]
+    winner: str | None
     attacker_survivors: int
     defender_survivors: int
     attacker_losses: int
     defender_losses: int
-    control_before: Optional[str]
-    control_after: Optional[str]
+    control_before: str | None
+    control_after: str | None
     simultaneous: bool = False
 
 
@@ -148,7 +147,7 @@ def resolve_combat(attacker_ships: int, defender_ships: int) -> CombatResult:
         )
 
 
-def process_combat(game: Game) -> tuple[Game, List[CombatEvent]]:
+def process_combat(game: Game) -> tuple[Game, list[CombatEvent]]:
     """Execute Phase 2: Combat Resolution.
 
     For each star with potential combat:
@@ -179,7 +178,7 @@ def process_combat(game: Game) -> tuple[Game, List[CombatEvent]]:
     return game, combat_events
 
 
-def _resolve_star_combat(game: Game, star: Star) -> List[CombatEvent]:
+def _resolve_star_combat(game: Game, star: Star) -> list[CombatEvent]:
     """Resolve all combat at a single star.
 
     Combat sequence depends on the situation:
@@ -239,7 +238,7 @@ def _resolve_star_combat(game: Game, star: Star) -> List[CombatEvent]:
     return events
 
 
-def _resolve_npc_combat(game: Game, star: Star) -> Optional[CombatEvent]:
+def _resolve_npc_combat(game: Game, star: Star) -> CombatEvent | None:
     """Resolve combat between NPC defenders and player attackers.
 
     Args:
@@ -334,7 +333,7 @@ def _resolve_npc_combat(game: Game, star: Star) -> Optional[CombatEvent]:
     )
 
 
-def _resolve_player_combat(game: Game, star: Star) -> Optional[CombatEvent]:
+def _resolve_player_combat(game: Game, star: Star) -> CombatEvent | None:
     """Resolve combat between two players at a star.
 
     Only called after NPC combat (if any) has been resolved.
