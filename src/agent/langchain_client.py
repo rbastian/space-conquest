@@ -31,6 +31,7 @@ PROVIDER_MODELS = {
         "sonnet": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
         "sonnet45": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
         "opus": "us.anthropic.claude-3-opus-20240229-v1:0",
+        "nova-2-lite": "global.amazon.nova-2-lite-v1:0",
     },
     "openai": {
         "gpt-4o": "gpt-4o",
@@ -238,9 +239,17 @@ class LangChainClient:
                             )
                 elif role == "assistant":
                     # For assistant messages with content blocks, extract text and tool calls
-                    text_parts = [
-                        block.get("text", "") for block in content if block.get("type") == "text"
-                    ]
+                    text_parts = []
+                    for block in content:
+                        if block.get("type") == "text":
+                            text = block.get("text", "")
+                            # Handle cases where text might be a list or other structure
+                            if isinstance(text, list):
+                                text = "\n".join(str(item) for item in text)
+                            elif not isinstance(text, str):
+                                text = str(text)
+                            text_parts.append(text)
+
                     tool_calls = []
 
                     # Extract tool_use blocks and convert to tool_calls format
