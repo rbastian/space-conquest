@@ -52,6 +52,9 @@ htmlcov/
 state/*.json
 !state/.gitkeep
 
+# Logs
+logs/
+
 # Environment Variables
 .env
 .env.local
