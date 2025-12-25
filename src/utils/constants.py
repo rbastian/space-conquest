@@ -10,7 +10,7 @@ HOME_RU = 4
 NPC_RU_RANGE = (1, 3)  # Base RU for NPC stars
 
 # Probabilities
-HYPERSPACE_LOSS_PROB = 0.02  # 2% per turn (d50 roll of 1)
+HYPERSPACE_LOSS_PROB = 0.02  # 2% per turn
 REBELLION_PROB = 0.5  # 50% if under-garrisoned (d6 roll of 4-6)
 
 # Map generation

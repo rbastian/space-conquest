@@ -54,7 +54,15 @@ def test_phase_movement_independent():
     from src.models.fleet import Fleet
 
     game.fleets.append(
-        Fleet(id="p1-001", owner="p1", ships=5, origin="A", dest="B", dist_remaining=2)
+        Fleet(
+            id="p1-001",
+            owner="p1",
+            ships=5,
+            origin="A",
+            dest="B",
+            dist_remaining=2,
+            rationale="attack",
+        )
     )
 
     # Execute movement phase only
@@ -174,7 +182,15 @@ def test_orchestration_pre_display_phases():
     from src.models.fleet import Fleet
 
     game.fleets.append(
-        Fleet(id="p1-001", owner="p1", ships=5, origin="A", dest="B", dist_remaining=1)
+        Fleet(
+            id="p1-001",
+            owner="p1",
+            ships=5,
+            origin="A",
+            dest="B",
+            dist_remaining=1,
+            rationale="attack",
+        )
     )
 
     initial_turn = game.turn

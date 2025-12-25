@@ -18,7 +18,15 @@ def test_save_and_load_game():
     # Modify game state slightly
     game.turn = 5
     game.fleets.append(
-        Fleet(id="p1-001", owner="p1", ships=10, origin="A", dest="B", dist_remaining=3)
+        Fleet(
+            id="p1-001",
+            owner="p1",
+            ships=10,
+            origin="A",
+            dest="B",
+            dist_remaining=3,
+            rationale="attack",
+        )
     )
 
     # Save to temporary file
@@ -64,10 +72,26 @@ def test_save_preserves_fleet_data():
     """Test that fleet data is preserved correctly."""
     game = generate_map(seed=456)
     game.fleets.append(
-        Fleet(id="p1-001", owner="p1", ships=5, origin="A", dest="C", dist_remaining=2)
+        Fleet(
+            id="p1-001",
+            owner="p1",
+            ships=5,
+            origin="A",
+            dest="C",
+            dist_remaining=2,
+            rationale="attack",
+        )
     )
     game.fleets.append(
-        Fleet(id="p2-001", owner="p2", ships=3, origin="B", dest="D", dist_remaining=4)
+        Fleet(
+            id="p2-001",
+            owner="p2",
+            ships=3,
+            origin="B",
+            dest="D",
+            dist_remaining=4,
+            rationale="attack",
+        )
     )
 
     # Save and load

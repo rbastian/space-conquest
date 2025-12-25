@@ -18,6 +18,7 @@ class Fleet:
     origin: str  # Origin star ID
     dest: str  # Destination star ID
     dist_remaining: int  # Turns until arrival
+    rationale: str  # Strategic purpose (attack, reinforce, expand, probe, retreat, consolidate)
 
     def __post_init__(self):
         """Validate fleet data after initialization."""

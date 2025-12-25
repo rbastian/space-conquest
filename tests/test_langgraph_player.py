@@ -168,40 +168,39 @@ class TestDynamicPrompts:
     """Test dynamic system prompt generation."""
 
     def test_system_prompt_early_game(self):
-        """Test early game prompt includes early game guidance."""
+        """Test early game prompt includes phase information."""
         prompt = get_system_prompt(game_phase="early", threat_level="low")
 
-        assert "EARLY GAME" in prompt
-        assert "MAXIMUM AGGRESSION" in prompt
+        assert "Early game" in prompt
+        assert "No enemy contact detected yet" in prompt
 
     def test_system_prompt_mid_game(self):
-        """Test mid game prompt includes mid game guidance."""
+        """Test mid game prompt includes phase information."""
         prompt = get_system_prompt(game_phase="mid", threat_level="medium")
 
-        assert "MID GAME" in prompt
-        assert "ASSAULT PHASE" in prompt
+        assert "Mid game" in prompt
+        assert "Enemy territory located" in prompt
 
     def test_system_prompt_late_game(self):
-        """Test late game prompt includes late game guidance."""
+        """Test late game prompt includes phase information."""
         prompt = get_system_prompt(game_phase="late", threat_level="high")
 
-        assert "LATE GAME" in prompt
-        assert "DECISIVE STRIKE" in prompt
+        assert "Late game" in prompt
+        assert "Enemy within 3 parsecs" in prompt
 
     def test_system_prompt_critical_threat(self):
-        """Test critical threat prompt includes urgent guidance."""
+        """Test critical threat prompt includes threat information."""
         prompt = get_system_prompt(game_phase="mid", threat_level="critical")
 
-        assert "ENEMY CLOSE" in prompt
-        assert "CRITICAL SITUATION" in prompt
-        assert "INSTANT GAME OVER" in prompt
+        assert "Enemy detected within 2 parsecs" in prompt
+        assert "INSTANT GAME OVER" in prompt  # This is in victory conditions
 
     def test_system_prompt_early_game_provides_guidance(self):
-        """Test early game prompt provides expansion guidance."""
+        """Test early game prompt includes situational context."""
         prompt = get_system_prompt(game_phase="early", threat_level="low")
 
-        assert "EARLY GAME" in prompt
-        assert "MAXIMUM AGGRESSION" in prompt
+        assert "Early game" in prompt
+        assert "Enemy location unknown or distant" in prompt
 
     def test_system_prompt_no_context(self):
         """Test prompt without context still works."""

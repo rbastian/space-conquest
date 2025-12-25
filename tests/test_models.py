@@ -124,6 +124,7 @@ class TestFleet:
             origin="A",
             dest="B",
             dist_remaining=3,
+            rationale="attack",
         )
         assert fleet.id == "p1-001"
         assert fleet.owner == "p1"
@@ -142,6 +143,7 @@ class TestFleet:
                 origin="A",
                 dest="B",
                 dist_remaining=3,
+                rationale="attack",
             )
 
     def test_invalid_ships(self):
@@ -154,6 +156,7 @@ class TestFleet:
                 origin="A",
                 dest="B",
                 dist_remaining=3,
+                rationale="attack",
             )
 
         with pytest.raises(ValueError, match="Invalid ships"):
@@ -164,6 +167,7 @@ class TestFleet:
                 origin="A",
                 dest="B",
                 dist_remaining=3,
+                rationale="attack",
             )
 
     def test_invalid_distance(self):
@@ -176,6 +180,7 @@ class TestFleet:
                 origin="A",
                 dest="B",
                 dist_remaining=-1,
+                rationale="attack",
             )
 
 

@@ -42,7 +42,7 @@ class TestAgentTools:
         # Find a destination
         dest_star = game.stars[0] if game.stars[0] != p2_star else game.stars[1]
 
-        orders = [{"from": p2_star.id, "to": dest_star.id, "ships": 1}]
+        orders = [{"from": p2_star.id, "to": dest_star.id, "ships": 1, "rationale": "expand"}]
 
         result = tools.propose_orders(orders)
         assert result["ok"] is True
@@ -64,7 +64,7 @@ class TestAgentTools:
 
         dest_star = game.stars[0] if game.stars[0] != p2_star else game.stars[1]
 
-        orders = [{"from": p2_star.id, "to": dest_star.id, "ships": 10}]
+        orders = [{"from": p2_star.id, "to": dest_star.id, "ships": 10, "rationale": "attack"}]
 
         result = tools.propose_orders(orders)
         assert result["ok"] is False
@@ -85,7 +85,7 @@ class TestAgentTools:
 
         dest_star = game.stars[0]
 
-        orders = [{"from": other_star.id, "to": dest_star.id, "ships": 1}]
+        orders = [{"from": other_star.id, "to": dest_star.id, "ships": 1, "rationale": "expand"}]
 
         result = tools.propose_orders(orders)
         assert result["ok"] is False
@@ -108,7 +108,7 @@ class TestAgentTools:
 
         dest_star = game.stars[0] if game.stars[0] != p2_star else game.stars[1]
 
-        orders = [{"from": p2_star.id, "to": dest_star.id, "ships": 2}]
+        orders = [{"from": p2_star.id, "to": dest_star.id, "ships": 2, "rationale": "expand"}]
 
         result = tools.submit_orders(orders)
         assert result["status"] == "submitted"
@@ -136,12 +136,13 @@ class TestAgentTools:
         assert tools.pending_orders is None
 
     def test_tool_definitions_complete(self):
-        """Test that submit_orders tool is defined."""
+        """Test that all tools are defined."""
         tool_names = {td["name"] for td in TOOL_DEFINITIONS}
 
-        # Only submit_orders tool should exist in simplified architecture
+        # Check that both tools exist
         assert "submit_orders" in tool_names
-        assert len(tool_names) == 1
+        assert "calculate_distance" in tool_names
+        assert len(tool_names) == 2
 
 
 class TestLLMPlayer:

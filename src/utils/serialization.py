@@ -168,6 +168,7 @@ def _serialize_fleet(fleet: Fleet) -> dict[str, Any]:
         "origin": fleet.origin,
         "dest": fleet.dest,
         "dist_remaining": fleet.dist_remaining,
+        "rationale": fleet.rationale,
     }
 
 
@@ -180,6 +181,7 @@ def _deserialize_fleet(data: dict[str, Any]) -> Fleet:
         origin=data["origin"],
         dest=data["dest"],
         dist_remaining=data["dist_remaining"],
+        rationale=data.get("rationale", "unknown"),  # Default for legacy saves
     )
 
 

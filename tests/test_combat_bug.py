@@ -76,6 +76,7 @@ def test_simultaneous_arrival_at_npc_star_both_fleets_participate():
         origin="O",
         dest="J",
         dist_remaining=1,  # Will arrive this turn
+        rationale="attack",
     )
 
     fleet_p2 = Fleet(
@@ -85,6 +86,7 @@ def test_simultaneous_arrival_at_npc_star_both_fleets_participate():
         origin="K",
         dest="J",
         dist_remaining=1,  # Will arrive this turn
+        rationale="attack",
     )
 
     game.fleets = [fleet_p1, fleet_p2]

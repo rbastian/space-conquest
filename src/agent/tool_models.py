@@ -4,7 +4,7 @@ Provides type-safe validation for all LLM agent tools to ensure
 data integrity and catch errors early in the tool execution pipeline.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -17,6 +17,9 @@ class OrderModel(BaseModel):
     from_: str = Field(alias="from", description="Origin star ID")
     to: str = Field(description="Destination star ID")
     ships: int = Field(gt=0, description="Number of ships to move (must be > 0)")
+    rationale: Literal["attack", "reinforce", "expand", "probe", "retreat", "consolidate"] = Field(
+        description="Strategic purpose of this fleet movement"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -31,6 +34,21 @@ class SubmitOrdersInput(BaseModel):
     """Input for submit_orders tool."""
 
     orders: list[OrderModel] = Field(description="List of orders to submit")
+
+
+class CalculateDistanceInput(BaseModel):
+    """Input for calculate_distance tool."""
+
+    from_: str = Field(alias="from", description="Origin star ID")
+    to: str = Field(description="Destination star ID")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator("from_", "to")
+    @classmethod
+    def uppercase_star(cls, v: str) -> str:
+        """Convert star IDs to uppercase."""
+        return v.upper()
 
 
 # ========== Output Models ==========
@@ -76,6 +94,19 @@ class SubmitOrdersOutput(BaseModel):
     turn: int
 
 
+class CalculateDistanceOutput(BaseModel):
+    """Output for calculate_distance tool."""
+
+    from_star: str
+    from_star_name: str
+    to_star: str
+    to_star_name: str
+    distance_turns: int
+    current_turn: int
+    arrival_turn: int
+    hyperspace_loss_probability: float
+
+
 class BedrockResponse(BaseModel):
     """Model for Bedrock API response.
 
@@ -117,12 +148,37 @@ TOOL_REGISTRY = {
                                 "type": "integer",
                                 "description": "Number of ships to move",
                             },
+                            "rationale": {
+                                "type": "string",
+                                "enum": [
+                                    "attack",
+                                    "reinforce",
+                                    "expand",
+                                    "probe",
+                                    "retreat",
+                                    "consolidate",
+                                ],
+                                "description": "Strategic purpose: 'attack' (offensive strike vs enemy), 'reinforce' (strengthen garrison), 'expand' (capture neutral), 'probe' (test defenses), 'retreat' (pull back), 'consolidate' (merge forces)",
+                            },
                         },
-                        "required": ["from", "to", "ships"],
+                        "required": ["from", "to", "ships", "rationale"],
                     },
                 }
             },
             "required": ["orders"],
+        },
+    },
+    "calculate_distance": {
+        "input_model": CalculateDistanceInput,
+        "output_model": CalculateDistanceOutput,
+        "description": "Calculate travel distance, arrival time, and hyperspace risk between two stars. Given two star IDs, returns the distance in turns, the turn when a fleet would arrive if ordered now, and the cumulative probability of losing the entire fleet to hyperspace (2% per turn of travel). Essential for evaluating whether long-distance attacks are worth the risk. Works for any valid star IDs, regardless of ownership or fog-of-war.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "from": {"type": "string", "description": "Origin star ID (e.g., 'A', 'B')"},
+                "to": {"type": "string", "description": "Destination star ID (e.g., 'C', 'D')"},
+            },
+            "required": ["from", "to"],
         },
     },
 }

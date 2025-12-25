@@ -54,6 +54,7 @@ def test_fleet_arriving_next_turn():
         origin="A",
         dest="B",
         dist_remaining=1,
+        rationale="attack",
     )
 
     # Create fleet that will arrive in future turn
@@ -65,6 +66,7 @@ def test_fleet_arriving_next_turn():
         origin="A",
         dest="B",
         dist_remaining=2,
+        rationale="attack",
     )
 
     game.fleets = [fleet_arriving, fleet_future]
@@ -133,6 +135,7 @@ def test_fleet_arriving_future_turn():
         origin="A",
         dest="B",
         dist_remaining=5,
+        rationale="attack",
     )
     game.fleets = [fleet]
 

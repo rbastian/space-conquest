@@ -11,7 +11,7 @@ from typing import Any
 
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 
-from .tool_models import BedrockResponse
+from .response_models import LLMResponse, UsageMetadata
 
 try:
     from langchain_core.messages import AIMessage, HumanMessage
@@ -322,7 +322,7 @@ class LangChainClient:
         system: str,
         tools: list[dict[str, Any]] | None = None,
         max_iterations: int = 10,
-    ) -> dict[str, Any]:
+    ) -> LLMResponse:
         """Invoke LLM with messages and optional tools.
 
         PROMPT CACHING (Anthropic/Bedrock only):
@@ -341,11 +341,13 @@ class LangChainClient:
             max_iterations: Maximum tool use iterations (not used, for compatibility)
 
         Returns:
-            Dict containing:
+            LLMResponse with:
                 - response: Final assistant message content
+                - content_blocks: List of content blocks
                 - tool_calls: List of tool calls made
                 - stop_reason: Why the model stopped
                 - requires_tool_execution: Whether tools need to be executed
+                - usage_metadata: Token usage and cache metrics
 
         Raises:
             Exception: If LLM API call fails
@@ -380,48 +382,62 @@ class LangChainClient:
             else:
                 response = self.client.invoke(lc_messages)
 
-            # Log cache usage for providers that support it
-            if self.provider in ["anthropic", "bedrock"]:
-                # Try usage_metadata first (Anthropic direct API)
-                if hasattr(response, "usage_metadata") and response.usage_metadata:
-                    usage = response.usage_metadata
-                    cache_read = usage.get("cache_read_input_tokens", 0)
-                    cache_creation = usage.get("cache_creation_input_tokens", 0)
-                    input_tokens = usage.get("input_tokens", 0)
-                    output_tokens = usage.get("output_tokens", 0)
+            # Extract usage metadata from response
+            usage_metadata: UsageMetadata | None = None
 
-                    if cache_read > 0:
-                        logger.info(
-                            f"Cache HIT: {cache_read} tokens read from cache (saved ~90% cost)"
-                        )
-                    if cache_creation > 0:
-                        logger.info(f"Cache MISS: {cache_creation} tokens written to cache")
+            if hasattr(response, "usage_metadata") and response.usage_metadata:
+                # Anthropic direct API format
+                usage = response.usage_metadata
+                usage_metadata = {
+                    "input_tokens": usage.get("input_tokens", 0),
+                    "output_tokens": usage.get("output_tokens", 0),
+                    "total_tokens": usage.get("total_tokens", 0),
+                }
 
-                    logger.info(
-                        f"Token usage - Input: {input_tokens}, Output: {output_tokens}, Cache read: {cache_read}, Cache write: {cache_creation}"
-                    )
+                # Add cache metrics if present
+                cache_read = usage.get("cache_read_input_tokens", 0)
+                cache_creation = usage.get("cache_creation_input_tokens", 0)
 
-                # Also check response_metadata (Bedrock via LangChain might use this)
-                elif hasattr(response, "response_metadata") and response.response_metadata:
-                    metadata = response.response_metadata
-                    # Bedrock puts usage in response_metadata.usage or directly in response_metadata
-                    usage = metadata.get("usage", metadata)
+                if cache_read > 0:
+                    usage_metadata["cache_read_input_tokens"] = cache_read
+                    logger.info(f"Cache HIT: {cache_read} tokens read from cache (saved ~90% cost)")
+                if cache_creation > 0:
+                    usage_metadata["cache_creation_input_tokens"] = cache_creation
+                    logger.info(f"Cache MISS: {cache_creation} tokens written to cache")
 
-                    input_tokens = usage.get("input_tokens", 0)
-                    output_tokens = usage.get("output_tokens", 0)
-                    cache_read = usage.get("cache_read_input_tokens", 0)
-                    cache_creation = usage.get("cache_creation_input_tokens", 0)
+                logger.info(
+                    f"Token usage - Input: {usage_metadata['input_tokens']}, "
+                    f"Output: {usage_metadata['output_tokens']}, "
+                    f"Cache read: {cache_read}, Cache write: {cache_creation}"
+                )
 
-                    if cache_read > 0:
-                        logger.info(
-                            f"Cache HIT: {cache_read} tokens read from cache (saved ~90% cost)"
-                        )
-                    if cache_creation > 0:
-                        logger.info(f"Cache MISS: {cache_creation} tokens written to cache")
+            elif hasattr(response, "response_metadata") and response.response_metadata:
+                # Bedrock via LangChain format
+                metadata = response.response_metadata
+                usage = metadata.get("usage", metadata)
 
-                    logger.info(
-                        f"Token usage - Input: {input_tokens}, Output: {output_tokens}, Cache read: {cache_read}, Cache write: {cache_creation}"
-                    )
+                usage_metadata = {
+                    "input_tokens": usage.get("input_tokens", 0),
+                    "output_tokens": usage.get("output_tokens", 0),
+                    "total_tokens": usage.get("total_tokens", 0),
+                }
+
+                # Add cache metrics if present
+                cache_read = usage.get("cache_read_input_tokens", 0)
+                cache_creation = usage.get("cache_creation_input_tokens", 0)
+
+                if cache_read > 0:
+                    usage_metadata["cache_read_input_tokens"] = cache_read
+                    logger.info(f"Cache HIT: {cache_read} tokens read from cache (saved ~90% cost)")
+                if cache_creation > 0:
+                    usage_metadata["cache_creation_input_tokens"] = cache_creation
+                    logger.info(f"Cache MISS: {cache_creation} tokens written to cache")
+
+                logger.info(
+                    f"Token usage - Input: {usage_metadata['input_tokens']}, "
+                    f"Output: {usage_metadata['output_tokens']}, "
+                    f"Cache read: {cache_read}, Cache write: {cache_creation}"
+                )
 
             # Check if model wants to use tools
             if hasattr(response, "tool_calls") and response.tool_calls:
@@ -457,24 +473,27 @@ class LangChainClient:
                         }
                     )
 
-                return BedrockResponse(
-                    response=content_blocks,
-                    content_blocks=content_blocks,
-                    tool_calls=tool_calls_made,
-                    stop_reason="tool_use",
-                    requires_tool_execution=True,
-                ).model_dump()
+                # Return LLMResponse with tool calls
+                return {
+                    "response": content_blocks,
+                    "content_blocks": content_blocks,
+                    "tool_calls": tool_calls_made,
+                    "stop_reason": "tool_use",
+                    "requires_tool_execution": True,
+                    "usage_metadata": usage_metadata,
+                }
             else:
                 # No tool calls, return text response
                 text_content = response.content if hasattr(response, "content") else str(response)
 
-                return BedrockResponse(
-                    response=text_content,
-                    content_blocks=[{"type": "text", "text": text_content}],
-                    tool_calls=[],
-                    stop_reason="end_turn",
-                    requires_tool_execution=False,
-                ).model_dump()
+                return {
+                    "response": text_content,
+                    "content_blocks": [{"type": "text", "text": text_content}],
+                    "tool_calls": [],
+                    "stop_reason": "end_turn",
+                    "requires_tool_execution": False,
+                    "usage_metadata": usage_metadata,
+                }
 
         except Exception as e:
             import traceback
@@ -489,7 +508,7 @@ class LangChainClient:
         system: str,
         tool_results: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
-    ) -> dict[str, Any]:
+    ) -> LLMResponse:
         """Continue conversation with tool execution results.
 
         Args:
@@ -499,7 +518,7 @@ class LangChainClient:
             tools: Tool definitions
 
         Returns:
-            Response dict from invoke()
+            LLMResponse from invoke()
         """
         # Add tool results to conversation
         tool_result_blocks = []
@@ -540,7 +559,7 @@ class MockLangChainClient:
         system: str,
         tools: list[dict[str, Any]] | None = None,
         max_iterations: int = 10,
-    ) -> dict[str, Any]:
+    ) -> LLMResponse:
         """Mock invoke that returns a simple response.
 
         Args:
@@ -550,7 +569,7 @@ class MockLangChainClient:
             max_iterations: Max iterations
 
         Returns:
-            Mock response with empty orders
+            Mock LLMResponse with empty orders
         """
         self.call_count += 1
         self.last_request = {"messages": messages, "system": system, "tools": tools}
@@ -562,6 +581,7 @@ class MockLangChainClient:
             "tool_calls": [],
             "stop_reason": "end_turn",
             "requires_tool_execution": False,
+            "usage_metadata": None,
         }
 
     def continue_with_tool_results(
@@ -570,7 +590,7 @@ class MockLangChainClient:
         system: str,
         tool_results: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
-    ) -> dict[str, Any]:
+    ) -> LLMResponse:
         """Mock continue with tool results.
 
         Args:
@@ -580,6 +600,6 @@ class MockLangChainClient:
             tools: Tool definitions
 
         Returns:
-            Mock response
+            Mock LLMResponse
         """
         return self.invoke(messages, system, tools)

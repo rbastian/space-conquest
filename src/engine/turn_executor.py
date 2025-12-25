@@ -722,6 +722,7 @@ class TurnExecutor:
             origin=order.from_star,
             dest=order.to_star,
             dist_remaining=distance,
+            rationale=order.rationale,
         )
 
         game.fleets.append(fleet)

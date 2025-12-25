@@ -9,7 +9,7 @@ import argparse
 import logging
 import sys
 
-from src.agent.llm_player import LLMPlayer
+from src.agent.langgraph_player import LangGraphPlayer
 from src.engine.map_generator import generate_map
 from src.engine.turn_executor import TurnExecutor
 from src.interface.display import DisplayManager
@@ -27,8 +27,8 @@ class GameOrchestrator:
 
         Args:
             game: Initial game state
-            p1_controller: Controller for player 1 (HumanPlayer or LLMPlayer)
-            p2_controller: Controller for player 2 (HumanPlayer or LLMPlayer)
+            p1_controller: Controller for player 1 (HumanPlayer or LangGraphPlayer)
+            p2_controller: Controller for player 2 (HumanPlayer or LangGraphPlayer)
             use_tui: If True, skip welcome message (TUI shows its own)
         """
         self.game = game
@@ -41,7 +41,7 @@ class GameOrchestrator:
         self.last_rebellion_events = []
 
         # Extract and store p2 model ID for display name generation
-        if isinstance(p2_controller, LLMPlayer):
+        if isinstance(p2_controller, LangGraphPlayer):
             self.game.p2_model_id = p2_controller.client.model_id
 
     def run(self) -> Game:
@@ -53,7 +53,13 @@ class GameOrchestrator:
             print("=" * 60)
             print("\nGoal: Capture your opponent's home star to win!")
             print("Press Ctrl+C at any time to quit.\n")
-            input("Press Enter to start the game...")
+
+            # Only wait for Enter if there's a human player
+            has_human = any(isinstance(p, HumanPlayer) for p in self.players.values())
+            if has_human:
+                input("Press Enter to start the game...")
+            else:
+                print("Starting AI vs AI game...\n")
 
         try:
             while not self.game.winner:
@@ -214,7 +220,7 @@ Examples:
     args = parser.parse_args()
 
     # Configure logging to display LLM reasoning and tool use
-    # This shows all the LLM's thinking when verbose=True in LLMPlayer
+    # This shows all the LLM's thinking when verbose=True in LangGraphPlayer
     # Use DEBUG level when --debug flag is set, otherwise INFO for cleaner output
     log_level = logging.DEBUG if args.debug else logging.INFO
     logging.basicConfig(
@@ -276,7 +282,7 @@ Examples:
             p1 = HumanPlayer("p1")
         try:
             # Try to use real LLM client, fall back to mock if unavailable
-            p2 = LLMPlayer(
+            p2 = LangGraphPlayer(
                 "p2",
                 use_mock=False,
                 provider=args.provider,
@@ -288,12 +294,12 @@ Examples:
         except Exception as e:
             print(f"Warning: Could not initialize {args.provider} client: {e}")
             print("Falling back to mock LLM player (for testing only)")
-            p2 = LLMPlayer("p2", use_mock=True, verbose=args.debug)
+            p2 = LangGraphPlayer("p2", use_mock=True, verbose=args.debug)
     else:  # lvl
         model_display = args.model or f"{args.provider} default"
         print(f"Initializing LLM vs LLM game ({args.provider} provider, model: {model_display})...")
         try:
-            p1 = LLMPlayer(
+            p1 = LangGraphPlayer(
                 "p1",
                 use_mock=False,
                 provider=args.provider,
@@ -301,7 +307,7 @@ Examples:
                 api_base=args.api_base,
                 verbose=args.debug,
             )
-            p2 = LLMPlayer(
+            p2 = LangGraphPlayer(
                 "p2",
                 use_mock=False,
                 provider=args.provider,
@@ -313,8 +319,8 @@ Examples:
         except Exception as e:
             print(f"Warning: Could not initialize {args.provider} client: {e}")
             print("Falling back to mock LLM players (for testing only)")
-            p1 = LLMPlayer("p1", use_mock=True, verbose=args.debug)
-            p2 = LLMPlayer("p2", use_mock=True, verbose=args.debug)
+            p1 = LangGraphPlayer("p1", use_mock=True, verbose=args.debug)
+            p2 = LangGraphPlayer("p2", use_mock=True, verbose=args.debug)
 
     # Run game
     orchestrator = GameOrchestrator(game, p1, p2, use_tui=args.tui)
