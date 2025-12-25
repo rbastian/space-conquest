@@ -217,7 +217,7 @@ class AgentTools:
                         from_star=from_star,
                         to_star=to_star,
                         ships=o["ships"],
-                        rationale=o.get("rationale"),
+                        rationale=o["rationale"],  # Required field from validated input
                     )
                 )
             self.pending_orders = resolved_orders
@@ -363,7 +363,8 @@ class AgentTools:
             if tool_name == "submit_orders":
                 # Convert OrderModel list to dict list for internal method
                 orders_dict = [
-                    {"from": o.from_, "to": o.to, "ships": o.ships} for o in validated_input.orders
+                    {"from": o.from_, "to": o.to, "ships": o.ships, "rationale": o.rationale}
+                    for o in validated_input.orders
                 ]
                 # submit_orders validates internally and sets pending_orders
                 result = self.submit_orders(orders_dict)
