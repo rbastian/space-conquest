@@ -136,12 +136,13 @@ class TestAgentTools:
         assert tools.pending_orders is None
 
     def test_tool_definitions_complete(self):
-        """Test that submit_orders tool is defined."""
+        """Test that all tools are defined."""
         tool_names = {td["name"] for td in TOOL_DEFINITIONS}
 
-        # Only submit_orders tool should exist in simplified architecture
+        # Check that both tools exist
         assert "submit_orders" in tool_names
-        assert len(tool_names) == 1
+        assert "calculate_distance" in tool_names
+        assert len(tool_names) == 2
 
 
 class TestLLMPlayer:

@@ -15,6 +15,7 @@ class Order:
     from_star: str  # Origin star ID
     to_star: str  # Destination star ID
     ships: int  # Number of ships to move (must be > 0)
+    rationale: str | None = None  # Strategic purpose (attack, reinforce, expand, etc.)
 
     def __post_init__(self):
         """Validate order data after initialization."""

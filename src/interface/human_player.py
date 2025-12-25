@@ -4,7 +4,6 @@ This module provides the HumanPlayer class which handles getting orders
 from human players via command-line interface.
 """
 
-
 from ..engine.combat import CombatEvent, RebellionEvent
 from ..engine.movement import HyperspaceLoss
 from ..models.game import Game

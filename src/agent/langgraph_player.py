@@ -16,6 +16,8 @@ from typing import Literal
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 
+from ..analysis import calculate_strategic_metrics
+from ..analysis.strategic_logger import StrategicLogger
 from ..models.game import Game
 from ..models.order import Order
 from .langchain_client import LangChainClient, MockLangChainClient
@@ -28,6 +30,7 @@ from .middleware import (
     trim_message_history,
 )
 from .prompts import get_system_prompt
+from .response_models import ResponseView
 from .state_models import AgentState
 from .tool_models import TOOL_DEFINITIONS
 from .tools import AgentTools
@@ -97,6 +100,9 @@ class LangGraphPlayer:
 
         # Build the state graph
         self.graph = self._build_graph()
+
+        # Strategic logger (initialized on first turn)
+        self.strategic_logger: StrategicLogger | None = None
 
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph StateGraph for agent execution.
@@ -199,23 +205,31 @@ class LangGraphPlayer:
                 max_iterations=1,
             )
 
+            # Create view for easier inspection
+            view = ResponseView.from_response(response)
+
+            # Log LLM response at INFO level (only for tool-using responses)
+            if response.get("requires_tool_execution"):
+                logger.info("=" * 80)
+                logger.info("LLM RESPONSE:")
+                logger.info("=" * 80)
+                if view.text:
+                    logger.info(view.text)
+                if view.reasoning:
+                    logger.info(f"[REASONING] {view.reasoning}")
+                if view.has_tool_calls():
+                    for tool_call in view.tool_calls:
+                        logger.info(
+                            f"[TOOL CALL] {tool_call['name']} with input: {tool_call['input']}"
+                        )
+                if view.usage:
+                    logger.info(f"[USAGE] {view.format_usage()}")
+                logger.info("=" * 80)
+
             # Parse response and update state
             if response.get("requires_tool_execution"):
                 # LLM wants to use tools
                 content_blocks = response["content_blocks"]
-
-                # Log LLM thinking at INFO level
-                logger.info("=" * 80)
-                logger.info("LLM RESPONSE:")
-                logger.info("=" * 80)
-                for block in content_blocks:
-                    if block.get("type") == "text" and block.get("text"):
-                        logger.info(block["text"])
-                    elif block.get("type") == "tool_use":
-                        logger.info(
-                            f"[TOOL CALL] {block.get('name')} with input: {block.get('input')}"
-                        )
-                logger.info("=" * 80)
 
                 # Add assistant message to state
                 ai_message = AIMessage(content=content_blocks)
@@ -236,6 +250,8 @@ class LangGraphPlayer:
                 logger.info("LLM FINAL RESPONSE:")
                 logger.info("=" * 80)
                 logger.info(response_text)
+                if view.usage:
+                    logger.info(f"[USAGE] {view.format_usage()}")
                 logger.info("=" * 80)
                 logger.debug(f"LLM finished: {response['stop_reason']}")
 
@@ -499,11 +515,20 @@ class LangGraphPlayer:
         # Format game state as text
         formatted_state = format_game_state_prompt(game, self.player_id)
 
-        # Log the user prompt at INFO level
+        # Log compact JSON (indent=1 for better readability without huge output)
         logger.info("=" * 80)
         logger.info(f"USER PROMPT (Turn {game.turn}):")
         logger.info("=" * 80)
-        logger.info(formatted_state)
+        try:
+            import json
+
+            state_data = json.loads(formatted_state)
+            # Re-serialize with compact indent
+            compact_json = json.dumps(state_data, indent=1)
+            logger.info(compact_json)
+        except Exception:
+            # Fallback if JSON parsing fails
+            logger.info(formatted_state)
         logger.info("=" * 80)
 
         # Create initial state with formatted game state
@@ -550,4 +575,50 @@ class LangGraphPlayer:
         for order in orders:
             logger.debug(f"  - {order.ships} ships: {order.from_star} -> {order.to_star}")
 
+        # Log strategic metrics for this turn (always-on)
+        self._log_strategic_metrics(game)
+
         return orders
+
+    def _log_strategic_metrics(self, game: Game) -> None:
+        """Log strategic metrics for this turn.
+
+        Initializes the logger on first call and logs metrics to JSONL.
+        Errors in logging do not interrupt gameplay.
+
+        Args:
+            game: Current game state
+        """
+        # Initialize logger on first turn
+        if self.strategic_logger is None:
+            game_id = f"seed{game.seed}_{self.player_id}_turn{game.turn}"
+            try:
+                self.strategic_logger = StrategicLogger(game_id)
+                logger.debug(f"Initialized strategic logger: {self.strategic_logger.log_path}")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to initialize strategic logger: {type(e).__name__}: {e}",
+                    exc_info=True,
+                )
+                return
+
+        # Calculate and log metrics
+        try:
+            metrics = calculate_strategic_metrics(game, self.player_id, game.turn)
+            self.strategic_logger.log_turn(metrics)
+            logger.debug(f"Logged strategic metrics for turn {game.turn}")
+        except Exception as e:
+            # Don't fail the game if logging fails
+            logger.warning(
+                f"Failed to log strategic metrics for turn {game.turn}: {type(e).__name__}: {e}",
+                exc_info=True,
+            )
+
+    def close(self) -> None:
+        """Clean up resources.
+
+        Closes the strategic logger if initialized.
+        Should be called when the game ends.
+        """
+        if self.strategic_logger:
+            self.strategic_logger.close()

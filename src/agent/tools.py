@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from ..models.game import Game
 from ..models.order import Order
+from ..models.star import Star
 from .tool_models import TOOL_REGISTRY
 
 logger = logging.getLogger(__name__)
@@ -79,15 +80,30 @@ class AgentTools:
                     f"Invalid star index: {star_ref} (must be 0-{len(self.game.stars) - 1})"
                 )
 
-        # Check if it's a valid letter ID
+        # Check if it's a valid letter ID (case-insensitive)
+        star_ref_upper = star_ref.upper()
         for star in self.game.stars:
-            if star.id == star_ref:
-                return star_ref
+            if star.id == star_ref_upper:
+                return star_ref_upper
 
         raise ValueError(
             f"Invalid star reference: {star_ref} "
             f"(must be a letter ID like 'A' or numeric index like '0')"
         )
+
+    def _get_star_by_id(self, star_id: str) -> Star | None:
+        """Get a star object by its ID.
+
+        Args:
+            star_id: Star ID to look up
+
+        Returns:
+            Star object if found, None otherwise
+        """
+        for star in self.game.stars:
+            if star.id == star_id:
+                return star
+        return None
 
     def propose_orders(self, draft_orders: list[dict[str, Any]]) -> dict[str, Any]:
         """Validate draft orders without submitting.
@@ -197,7 +213,12 @@ class AgentTools:
                 from_star = self._resolve_star_id(str(o["from"]))
                 to_star = self._resolve_star_id(str(o["to"]))
                 resolved_orders.append(
-                    Order(from_star=from_star, to_star=to_star, ships=o["ships"])
+                    Order(
+                        from_star=from_star,
+                        to_star=to_star,
+                        ships=o["ships"],
+                        rationale=o.get("rationale"),
+                    )
                 )
             self.pending_orders = resolved_orders
             return {"ok": True}
@@ -232,6 +253,68 @@ class AgentTools:
             "status": "submitted",
             "order_count": len(orders),
             "turn": self.game.turn,
+        }
+
+    def calculate_distance(self, from_star: str, to_star: str) -> dict[str, Any]:
+        """Calculate travel distance and arrival time between two stars.
+
+        Args:
+            from_star: Origin star ID
+            to_star: Destination star ID
+
+        Returns:
+            Dict with distance_turns and arrival_turn
+
+        Raises:
+            ValueError: If either star ID is invalid
+        """
+        from ..utils.distance import chebyshev_distance
+
+        # Resolve star IDs (handles both letters and numeric indices, case-insensitive)
+        try:
+            from_star_id = self._resolve_star_id(from_star)
+        except ValueError as e:
+            raise ValueError(f"Invalid from_star: {e}")
+
+        try:
+            to_star_id = self._resolve_star_id(to_star)
+        except ValueError as e:
+            raise ValueError(f"Invalid to_star: {e}")
+
+        # Find star objects
+        from_star_obj = self._get_star_by_id(from_star_id)
+        to_star_obj = self._get_star_by_id(to_star_id)
+
+        if from_star_obj is None:
+            raise ValueError(f"Star not found: {from_star}")
+        if to_star_obj is None:
+            raise ValueError(f"Star not found: {to_star}")
+
+        # Calculate distance
+        distance = chebyshev_distance(
+            from_star_obj.x, from_star_obj.y, to_star_obj.x, to_star_obj.y
+        )
+
+        # Calculate arrival turn (current turn + distance)
+        arrival = self.game.turn + distance
+
+        # Calculate hyperspace loss probability
+        # Each turn has 2% chance of fleet destruction (binary outcome)
+        # Cumulative loss = 1 - (survival_rate)^distance
+        from ..utils.constants import HYPERSPACE_LOSS_PROB
+
+        survival_rate = 1 - HYPERSPACE_LOSS_PROB
+        hyperspace_loss_prob = 1 - (survival_rate**distance)
+
+        return {
+            "from_star": from_star_obj.id,
+            "from_star_name": from_star_obj.name,
+            "to_star": to_star_obj.id,
+            "to_star_name": to_star_obj.name,
+            "distance_turns": distance,
+            "current_turn": self.game.turn,
+            "arrival_turn": arrival,
+            "hyperspace_loss_probability": round(hyperspace_loss_prob, 4),
         }
 
     def get_pending_orders(self) -> list[Order] | None:
@@ -275,14 +358,19 @@ class AgentTools:
         except ValidationError as e:
             raise ValueError(f"Input validation failed for {tool_name}: {e}")
 
-        # Execute the tool (only submit_orders is supported)
+        # Execute the tool
         try:
-            # Convert OrderModel list to dict list for internal method
-            orders_dict = [
-                {"from": o.from_, "to": o.to, "ships": o.ships} for o in validated_input.orders
-            ]
-            # submit_orders validates internally and sets pending_orders
-            result = self.submit_orders(orders_dict)
+            if tool_name == "submit_orders":
+                # Convert OrderModel list to dict list for internal method
+                orders_dict = [
+                    {"from": o.from_, "to": o.to, "ships": o.ships} for o in validated_input.orders
+                ]
+                # submit_orders validates internally and sets pending_orders
+                result = self.submit_orders(orders_dict)
+            elif tool_name == "calculate_distance":
+                result = self.calculate_distance(validated_input.from_, validated_input.to)
+            else:
+                raise ValueError(f"Tool handler not implemented: {tool_name}")
 
         except Exception as e:
             # Re-raise with better context
@@ -376,8 +464,6 @@ class AgentTools:
                     "winner": winner,
                 }
             )
-
-            logger.info(f"Recorded PvP battle at {star_id} (turn {turn}): {winner} won")
 
     def _add_discovery_record(self, turn: int, star) -> None:
         """Add discovery record for newly visited stars.

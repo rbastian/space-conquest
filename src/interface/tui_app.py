@@ -4,7 +4,6 @@ This module provides a modern Terminal User Interface using the Textual framewor
 It displays the game map, controlled stars, fleets in transit, and handles player input.
 """
 
-
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal
@@ -739,7 +738,9 @@ def run_tui_demo():
 
     # Create a fleet in transit
     fleets = [
-        Fleet(id="f1", owner="p1", origin="A", dest="C", ships=3, dist_remaining=2),
+        Fleet(
+            id="f1", owner="p1", origin="A", dest="C", ships=3, dist_remaining=2, rationale="expand"
+        ),
     ]
 
     # Create game

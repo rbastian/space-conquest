@@ -22,6 +22,7 @@ def test_hyperspace_loss_destroys_fleet():
         origin="A",
         dest="B",
         dist_remaining=2,
+        rationale="attack",
     )
     game.fleets = [fleet]
 
@@ -48,6 +49,7 @@ def test_hyperspace_loss_destroys_fleet():
                 origin="A",
                 dest="B",
                 dist_remaining=2,
+                rationale="attack",
             )
         )
 
@@ -75,6 +77,7 @@ def test_fleet_movement_decrements_distance():
         origin="A",
         dest="B",
         dist_remaining=3,
+        rationale="attack",
     )
     game.fleets = [fleet]
 
@@ -110,6 +113,7 @@ def test_fleet_arrival_adds_ships_to_star():
         origin="A",
         dest="B",
         dist_remaining=1,
+        rationale="attack",
     )
     game.fleets = [fleet]
 
@@ -164,6 +168,7 @@ def test_fleet_arrival_reveals_star_ru():
         origin="A",
         dest="B",
         dist_remaining=1,
+        rationale="attack",
     )
     game.fleets = [fleet]
 
@@ -223,6 +228,7 @@ def test_multiple_fleets_arrive_simultaneously():
         origin="A",
         dest="B",
         dist_remaining=1,
+        rationale="attack",
     )
     fleet2 = Fleet(
         id="p1-002",
@@ -231,6 +237,7 @@ def test_multiple_fleets_arrive_simultaneously():
         origin="A",
         dest="B",
         dist_remaining=1,
+        rationale="attack",
     )
     game.fleets = [fleet1, fleet2]
 
@@ -308,6 +315,7 @@ def test_hyperspace_loss_statistical():
             origin="A",
             dest="B",
             dist_remaining=2,
+            rationale="attack",
         )
         game.fleets = [fleet]
 

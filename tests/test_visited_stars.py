@@ -48,6 +48,7 @@ class TestVisitedStarsFogOfWar:
             origin=player.home_star,
             dest=target_star_id,
             dist_remaining=0,  # Arriving this turn
+            rationale="expand",
         )
         game.fleets.append(fleet)
 

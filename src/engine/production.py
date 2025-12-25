@@ -8,7 +8,6 @@ Key: Rebellions are checked in Phase 3b (after combat, before victory check) so 
 see rebellion results BEFORE submitting orders. Production happens in Phase 5 (after orders).
 """
 
-
 from ..models.game import Game
 from ..models.star import Star
 from .combat import RebellionEvent, resolve_combat

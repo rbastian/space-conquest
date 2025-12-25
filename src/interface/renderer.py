@@ -4,7 +4,6 @@ This module renders the 12x10 game grid as ASCII art, showing stars
 with their RU values based on the player's fog-of-war knowledge.
 """
 
-
 from ..models.player import Player
 from ..models.star import Star
 

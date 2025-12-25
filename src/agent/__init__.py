@@ -5,13 +5,10 @@ This module provides an AI opponent powered by various LLM providers
 to observe the game state, make decisions, and submit orders while
 respecting fog-of-war constraints.
 
-Two implementations are available:
-- LLMPlayer: Simple stateless implementation (original)
-- LangGraphPlayer: Advanced implementation with state management,
-  dynamic prompts, and middleware (recommended for production)
+Uses LangGraph StateGraph architecture with state management,
+dynamic prompts, and middleware for production-ready AI gameplay.
 """
 
 from .langgraph_player import LangGraphPlayer
-from .llm_player import LLMPlayer
 
-__all__ = ["LLMPlayer", "LangGraphPlayer"]
+__all__ = ["LangGraphPlayer"]
