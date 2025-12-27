@@ -354,6 +354,7 @@ class GameSessionManager:
         seed: int | None = None,
         ai_provider: str = "bedrock",
         ai_model: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> GameSession:
         """Create a new game session with AI opponent.
 
@@ -362,6 +363,7 @@ class GameSessionManager:
             seed: Optional RNG seed for determinism
             ai_provider: LLM provider for AI player
             ai_model: Model name for AI player
+            reasoning_effort: Nova reasoning effort ("low", "medium", "high")
 
         Returns:
             Newly created GameSession
@@ -385,6 +387,7 @@ class GameSessionManager:
             model=ai_model,
             use_mock=False,  # Use real LLM
             verbose=False,  # Can enable for debugging
+            reasoning_effort=reasoning_effort,
         )
 
         # Create session

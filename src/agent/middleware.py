@@ -231,23 +231,6 @@ def reset_error_tracking(state: AgentState) -> AgentState:
     return {**state, "error_count": 0, "last_error": None}
 
 
-def filter_tools_by_game_state(state: AgentState) -> list[str]:
-    """Determine which tools should be available based on game state.
-
-    With the simplified tool set, we only have submit_orders tool.
-    Game state is passed directly in user message, and orders are
-    submitted via the submit_orders tool (which validates atomically).
-
-    Args:
-        state: Current agent state
-
-    Returns:
-        List of tool names that should be available (always just submit_orders)
-    """
-    # Only submit_orders tool is available in simplified agent
-    return ["submit_orders"]
-
-
 def inject_defensive_urgency(game_context: dict) -> str:
     """Generate dynamic defensive context based on threat level.
 

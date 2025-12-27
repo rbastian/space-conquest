@@ -194,6 +194,12 @@ Examples:
         help="API base URL (for Ollama, default: http://localhost:11434)",
     )
     parser.add_argument(
+        "--reasoning-effort",
+        choices=["low", "medium", "high"],
+        default=None,
+        help="Enable reasoning for Nova models with effort level: low, medium, or high (default: disabled)",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -289,6 +295,7 @@ Examples:
                 model=args.model,
                 api_base=args.api_base,
                 verbose=args.debug,
+                reasoning_effort=args.reasoning_effort,
             )
             print("LLM player initialized successfully!")
         except Exception as e:
@@ -306,6 +313,7 @@ Examples:
                 model=args.model,
                 api_base=args.api_base,
                 verbose=args.debug,
+                reasoning_effort=args.reasoning_effort,
             )
             p2 = LangGraphPlayer(
                 "p2",
@@ -314,6 +322,7 @@ Examples:
                 model=args.model,
                 api_base=args.api_base,
                 verbose=args.debug,
+                reasoning_effort=args.reasoning_effort,
             )
             print("Both LLM players initialized successfully!")
         except Exception as e:

@@ -154,6 +154,18 @@ class GameController {
             });
         });
 
+        // Model selection - show/hide reasoning section for Nova models
+        const modelSelect = document.getElementById('modelSelect');
+        const reasoningSection = document.getElementById('reasoningSection');
+        modelSelect.addEventListener('change', () => {
+            const selectedModel = modelSelect.value.toLowerCase();
+            if (selectedModel.includes('nova')) {
+                reasoningSection.classList.remove('hidden');
+            } else {
+                reasoningSection.classList.add('hidden');
+            }
+        });
+
         // Advanced toggle
         const advancedToggle = document.getElementById('advancedToggle');
         const advancedContent = document.getElementById('advancedContent');
@@ -172,12 +184,14 @@ class GameController {
         document.getElementById('startGameBtn').addEventListener('click', async () => {
             const modelSelect = document.getElementById('modelSelect');
             const seedInput = document.getElementById('seedInput');
+            const reasoningSelect = document.getElementById('reasoningSelect');
             const playerSide = document.querySelector('input[name="playerSide"]:checked').value;
 
             const config = {
                 humanPlayer: playerSide,
                 aiProvider: this.selectedProvider,
                 aiModel: modelSelect.value || null,
+                reasoningEffort: reasoningSelect.value || null,
                 seed: seedInput.value ? parseInt(seedInput.value) : null
             };
 
@@ -186,6 +200,9 @@ class GameController {
             this.addTerminalLine(`>> AI PROVIDER: ${this.selectedProvider.toUpperCase()}`, 'system');
             if (config.aiModel) {
                 this.addTerminalLine(`>> MODEL: ${config.aiModel}`, 'system');
+            }
+            if (config.reasoningEffort) {
+                this.addTerminalLine(`>> REASONING LEVEL: ${config.reasoningEffort.toUpperCase()}`, 'system');
             }
             this.addTerminalLine('>> INITIALIZING GAME SESSION...', 'system');
 
@@ -253,7 +270,7 @@ class GameController {
         modelNote.textContent = defaults[provider] || 'Provider default configuration';
     }
 
-    async createNewGame(config = { humanPlayer: 'p1', aiProvider: 'bedrock', aiModel: null, seed: null }) {
+    async createNewGame(config = { humanPlayer: 'p1', aiProvider: 'bedrock', aiModel: null, reasoningEffort: null, seed: null }) {
         try {
             const response = await fetch(`${this.apiBase}/games`, {
                 method: 'POST',

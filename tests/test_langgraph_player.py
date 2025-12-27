@@ -5,11 +5,10 @@ import pytest
 from src.agent.langgraph_player import LangGraphPlayer
 from src.agent.middleware import (
     assess_threat_level,
-    filter_tools_by_game_state,
     update_game_context_from_observation,
 )
 from src.agent.prompts import get_system_prompt
-from src.agent.state_models import AgentState, GameContext
+from src.agent.state_models import GameContext
 from src.engine.map_generator import generate_map
 from src.models.order import Order
 
@@ -88,35 +87,6 @@ class TestMiddleware:
 
         threat = assess_threat_level(context)
         assert threat == "low"
-
-    def test_filter_tools_simplified_architecture(self):
-        """Test tool filtering in simplified architecture (only submit_orders)."""
-        context: GameContext = {
-            "turn": 1,
-            "game_phase": "early",
-            "threat_level": "low",
-            "controlled_stars_count": 1,
-            "total_production": 4,
-            "total_ships": 4,
-            "enemy_stars_known": 0,
-            "nearest_enemy_distance": None,
-            "home_garrison": 4,
-            "orders_submitted": False,
-        }
-
-        state: AgentState = {
-            "messages": [],
-            "game_context": context,
-            "available_tools": [],
-            "error_count": 0,
-            "last_error": None,
-        }
-
-        tools = filter_tools_by_game_state(state)
-
-        # Simplified architecture: only submit_orders tool exists
-        assert "submit_orders" in tools
-        assert len(tools) == 1
 
     def test_update_game_context_from_observation(self):
         """Test extracting game context from observation."""
