@@ -2,17 +2,15 @@
 
 Provides middleware components for:
 - Context management (message trimming, token tracking)
-- Threat assessment (updating threat level based on observations)
 - Error recovery (graceful fallbacks when tools fail)
 - Tool result processing (enhancing tool outputs with additional context)
 """
 
 import logging
-from typing import Literal
 
 from langchain_core.messages import HumanMessage, trim_messages
 
-from .state_models import AgentState, GameContext
+from .state_models import AgentState
 
 logger = logging.getLogger(__name__)
 
@@ -59,123 +57,6 @@ def trim_message_history(state: AgentState) -> AgentState:
     logger.debug(f"Trimmed to {len(trimmed)} messages")
 
     return {**state, "messages": trimmed}
-
-
-def assess_threat_level(game_context: GameContext) -> Literal["low", "medium", "high", "critical"]:
-    """Assess threat level based on enemy proximity and strength.
-
-    Args:
-        game_context: Current game context with enemy information
-
-    Returns:
-        Threat level: low, medium, high, or critical
-    """
-    nearest_enemy = game_context.get("nearest_enemy_distance")
-
-    if nearest_enemy is None:
-        # No enemy stars known yet - low threat (early game)
-        return "low"
-
-    # Critical: Enemy within striking distance (1-2 parsecs from home)
-    if nearest_enemy <= 2:
-        return "critical"
-
-    # High: Enemy nearby (3-4 parsecs)
-    if nearest_enemy <= 4:
-        return "high"
-
-    # Medium: Enemy known but distant (5-6 parsecs)
-    if nearest_enemy <= 6:
-        return "medium"
-
-    # Low: Enemy far away (7+ parsecs)
-    return "low"
-
-
-def update_game_context_from_observation(
-    observation: dict, turn: int, home_star_id: str
-) -> GameContext:
-    """Extract game context from observation data.
-
-    This function analyzes the observation to determine:
-    - Game phase (early/mid/late based on strategic state, not turns)
-    - Threat level (based on enemy proximity)
-    - Strategic metrics (production, ships, stars)
-
-    Game phases are state-based (like chess):
-    - EARLY: No enemy contact yet (expansion phase)
-    - MID: Enemy located but distant (positioning phase)
-    - LATE: Enemy close or decisive battle (endgame phase)
-
-    Args:
-        observation: Observation dict from get_observation tool
-        turn: Current turn number
-        home_star_id: Player's home star ID
-
-    Returns:
-        GameContext with analyzed information
-    """
-    # Extract strategic dashboard
-    dashboard = observation.get("strategic_dashboard", {})
-    controlled_stars = dashboard.get("controlled_stars_count", 1)
-    total_production = dashboard.get("total_production_per_turn", 4)
-    total_ships = dashboard.get("total_ships", 4)
-
-    # Find home garrison
-    home_garrison = 0
-    for star in observation.get("stars", []):
-        if star.get("is_home"):
-            home_garrison = star.get("stationed_ships") or 0
-            break
-
-    # Find nearest enemy star
-    nearest_enemy_distance = None
-    enemy_stars_known = 0
-
-    for star in observation.get("stars", []):
-        if star.get("owner") == "p1":  # Enemy (from p2's perspective)
-            enemy_stars_known += 1
-            distance = star.get("distance_from_home")
-            if distance is not None:
-                if nearest_enemy_distance is None or distance < nearest_enemy_distance:
-                    nearest_enemy_distance = distance
-
-    # Determine game phase based on strategic state (not turns)
-    # Like chess: phases are defined by board state, not move count
-    if enemy_stars_known == 0:
-        # Early Game: No enemy contact yet - pure expansion phase
-        phase = "early"
-    elif nearest_enemy_distance is not None and nearest_enemy_distance <= 3:
-        # Late Game: Enemy within striking distance - decisive battle phase
-        phase = "late"
-    else:
-        # Mid Game: Enemy located but distant - positioning/buildup phase
-        phase = "mid"
-
-    # Build context
-    context: GameContext = {
-        "turn": turn,
-        "game_phase": phase,
-        "threat_level": "low",  # Will be updated below
-        "controlled_stars_count": controlled_stars,
-        "total_production": total_production,
-        "total_ships": total_ships,
-        "enemy_stars_known": enemy_stars_known,
-        "nearest_enemy_distance": nearest_enemy_distance,
-        "home_garrison": home_garrison,
-        "orders_submitted": False,
-    }
-
-    # Assess threat level
-    context["threat_level"] = assess_threat_level(context)
-
-    logger.debug(
-        f"Game context: phase={phase}, threat={context['threat_level']}, "
-        f"enemy_distance={nearest_enemy_distance}, stars={controlled_stars}, "
-        f"ships={total_ships}"
-    )
-
-    return context
 
 
 def handle_tool_error(state: AgentState, error: Exception, tool_name: str) -> AgentState:
@@ -229,71 +110,6 @@ def reset_error_tracking(state: AgentState) -> AgentState:
         logger.debug("Resetting error tracking after successful tool execution")
 
     return {**state, "error_count": 0, "last_error": None}
-
-
-def inject_defensive_urgency(game_context: dict) -> str:
-    """Generate dynamic defensive context based on threat level.
-
-    Returns additional prompt text to inject when threat is elevated.
-    This amplifies the importance of home defense when the LLM might
-    otherwise prioritize offense.
-
-    Args:
-        game_context: Current game context with threat_level, nearest_enemy_distance, home_garrison
-
-    Returns:
-        Additional prompt text for elevated threats, empty string otherwise
-    """
-    threat_level = game_context.get("threat_level")
-    nearest_enemy = game_context.get("nearest_enemy_distance")
-    home_garrison = game_context.get("home_garrison", 0)
-
-    # No injection needed for low/medium threat
-    if threat_level not in ("high", "critical"):
-        return ""
-
-    # Build urgency message based on threat level
-    if threat_level == "critical":
-        # Enemy within 2 parsecs - maximum urgency
-        urgency_msg = f"""
-
-DEFENSIVE URGENCY ALERT (CRITICAL):
-========================
-IMMEDIATE THREAT DETECTED: Enemy forces are within {nearest_enemy} parsecs of your home star.
-Current home garrison: {home_garrison} ships.
-
-CRITICAL ACTIONS REQUIRED:
-1. CALCULATE enemy strike capability from ALL enemy stars within 4 parsecs
-2. VERIFY home garrison exceeds enemy strike force by at least 2 ships
-3. If home is under-defended: IMMEDIATELY pull back fleets OR redirect production
-4. Consider pre-emptive strikes on enemy staging bases to eliminate threat
-
-WARNING: The enemy can reach your home in {nearest_enemy} turns. If they attack with superior force,
-you will LOSE THE GAME regardless of all other achievements. Home defense is your FIRST priority.
-
-Do NOT proceed with offensive operations until home defense gate condition is satisfied.
-"""
-
-    else:  # threat_level == "high"
-        # Enemy within 3-4 parsecs - elevated urgency
-        urgency_msg = f"""
-
-DEFENSIVE URGENCY ALERT (HIGH):
-========================
-ELEVATED THREAT: Enemy forces detected {nearest_enemy} parsecs from your home star.
-Current home garrison: {home_garrison} ships.
-
-REQUIRED ACTIONS:
-1. Calculate max enemy strike force from stars within 4 parsecs of home
-2. Ensure home garrison > enemy potential strike + 2 ships buffer
-3. If home garrison insufficient: adjust force deployment to prioritize home defense
-4. Monitor enemy movements and prepare counter-measures
-
-The enemy can reach your home in {nearest_enemy} turns. Losing your home = instant defeat.
-Balance offensive ambitions with defensive requirements. Verify gate condition before major offensives.
-"""
-
-    return urgency_msg
 
 
 def inject_threat_vector_analysis(threat_vectors: list[dict]) -> str:

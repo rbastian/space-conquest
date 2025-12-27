@@ -1,6 +1,5 @@
 """Tests for message content parsing helpers."""
 
-import pytest
 
 from src.agent.message_helpers import (
     extract_anthropic_claude_blocks,
@@ -26,18 +25,14 @@ class TestExtractAnthropicClaudeBlocks:
 
     def test_text_block_only(self):
         """Single text block extracts correctly."""
-        content = [
-            {"type": "text", "text": "This is visible text"}
-        ]
+        content = [{"type": "text", "text": "This is visible text"}]
         text, reasoning = extract_anthropic_claude_blocks(content)
         assert text == "This is visible text"
         assert reasoning is None
 
     def test_reasoning_block_only(self):
         """Single reasoning block extracts correctly."""
-        content = [
-            {"type": "reasoning_content", "reasoning_content": {"text": "Let me think..."}}
-        ]
+        content = [{"type": "reasoning_content", "reasoning_content": {"text": "Let me think..."}}]
         text, reasoning = extract_anthropic_claude_blocks(content)
         assert text == ""
         assert reasoning == "Let me think..."
@@ -46,7 +41,7 @@ class TestExtractAnthropicClaudeBlocks:
         """Both text and reasoning blocks extract correctly."""
         content = [
             {"type": "reasoning_content", "reasoning_content": {"text": "Analyzing..."}},
-            {"type": "text", "text": "The answer is 42"}
+            {"type": "text", "text": "The answer is 42"},
         ]
         text, reasoning = extract_anthropic_claude_blocks(content)
         assert text == "The answer is 42"
@@ -56,7 +51,7 @@ class TestExtractAnthropicClaudeBlocks:
         """Multiple text blocks are joined with newlines."""
         content = [
             {"type": "text", "text": "First paragraph"},
-            {"type": "text", "text": "Second paragraph"}
+            {"type": "text", "text": "Second paragraph"},
         ]
         text, reasoning = extract_anthropic_claude_blocks(content)
         assert text == "First paragraph\nSecond paragraph"
@@ -66,7 +61,7 @@ class TestExtractAnthropicClaudeBlocks:
         """Multiple reasoning blocks are joined with newlines."""
         content = [
             {"type": "reasoning_content", "reasoning_content": {"text": "Step 1..."}},
-            {"type": "reasoning_content", "reasoning_content": {"text": "Step 2..."}}
+            {"type": "reasoning_content", "reasoning_content": {"text": "Step 2..."}},
         ]
         text, reasoning = extract_anthropic_claude_blocks(content)
         assert text == ""
@@ -77,7 +72,7 @@ class TestExtractAnthropicClaudeBlocks:
         content = [
             {"type": "text", "text": "Using calculator"},
             {"type": "tool_use", "name": "calculate", "input": {"x": 5}},
-            {"type": "text", "text": "Result ready"}
+            {"type": "text", "text": "Result ready"},
         ]
         text, reasoning = extract_anthropic_claude_blocks(content)
         assert text == "Using calculator\nResult ready"
@@ -90,7 +85,7 @@ class TestExtractAnthropicClaudeBlocks:
             {"type": "text", "text": "Let me compute that"},
             {"type": "tool_use", "name": "calc", "input": {}},
             {"type": "reasoning_content", "reasoning_content": {"text": "Verified result"}},
-            {"type": "text", "text": "The answer is correct"}
+            {"type": "text", "text": "The answer is correct"},
         ]
         text, reasoning = extract_anthropic_claude_blocks(content)
         assert text == "Let me compute that\nThe answer is correct"
@@ -102,7 +97,7 @@ class TestExtractAnthropicClaudeBlocks:
             {"type": "text", "text": "Valid text"},
             "invalid item",
             None,
-            {"type": "text", "text": "More text"}
+            {"type": "text", "text": "More text"},
         ]
         text, reasoning = extract_anthropic_claude_blocks(content)
         assert text == "Valid text\nMore text"
@@ -112,7 +107,7 @@ class TestExtractAnthropicClaudeBlocks:
         """Blocks missing text key are skipped."""
         content = [
             {"type": "text"},  # Missing text key
-            {"type": "text", "text": "Valid"}
+            {"type": "text", "text": "Valid"},
         ]
         text, reasoning = extract_anthropic_claude_blocks(content)
         assert text == "Valid"
@@ -138,7 +133,7 @@ class TestExtractNovaBlocks:
         """Nova uses same format as Claude."""
         content = [
             {"type": "reasoning_content", "reasoning_content": {"text": "Thinking..."}},
-            {"type": "text", "text": "Response"}
+            {"type": "text", "text": "Response"},
         ]
         claude_text, claude_reasoning = extract_anthropic_claude_blocks(content)
         nova_text, nova_reasoning = extract_nova_blocks(content)
@@ -165,7 +160,7 @@ class TestNormalizeContentBlocks:
         content = [
             {"type": "text", "text": "Hello"},
             {"type": "reasoning_content", "reasoning_content": {"text": "Thinking"}},
-            {"type": "tool_use", "name": "calc", "input": {}}
+            {"type": "tool_use", "name": "calc", "input": {}},
         ]
         blocks = normalize_content_blocks(content)
         assert blocks == content
@@ -177,7 +172,7 @@ class TestNormalizeContentBlocks:
             {"type": "unknown_type", "data": "invalid"},  # Unknown type
             {"no_type_key": "invalid"},  # Missing type
             "string item",  # Not a dict
-            {"type": "text", "text": "Also valid"}
+            {"type": "text", "text": "Also valid"},
         ]
         blocks = normalize_content_blocks(content)
         assert len(blocks) == 2
@@ -190,7 +185,7 @@ class TestNormalizeContentBlocks:
             {"type": "text", "text": "Valid"},
             None,
             42,
-            {"type": "text", "text": "Also valid"}
+            {"type": "text", "text": "Also valid"},
         ]
         blocks = normalize_content_blocks(content)
         assert len(blocks) == 2
