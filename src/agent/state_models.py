@@ -47,9 +47,6 @@ class AgentState(TypedDict):
     # Game context - updated each turn
     game_context: GameContext
 
-    # Tool filtering state
-    available_tools: list[str]  # Which tools are available based on game state
-
     # Error recovery state
     error_count: int  # Track consecutive errors for circuit breaker
     last_error: str | None  # Most recent error message

@@ -16,6 +16,9 @@ class CreateGameRequest(BaseModel):
     aiModel: str | None = Field(  # noqa: N815
         default=None, description="Optional model name (provider-specific)"
     )
+    reasoningEffort: str | None = Field(  # noqa: N815
+        default=None, description="Nova reasoning effort: 'low', 'medium', or 'high'"
+    )
 
 
 class OrderRequest(BaseModel):

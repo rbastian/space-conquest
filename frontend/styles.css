@@ -1245,6 +1245,52 @@ tbody tr:active {
     color: var(--color-background);
 }
 
+/* Reasoning Selector (Nova models) */
+
+.reasoning-selector {
+    position: relative;
+}
+
+.reasoning-select {
+    width: 100%;
+    padding: var(--gap-md);
+    background: var(--color-panel-bg);
+    border: 2px solid var(--color-panel-border);
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    transition: all var(--transition-fast);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23ffb000' d='M0 0l6 8 6-8z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 12px;
+    padding-right: 40px;
+}
+
+.reasoning-select:hover,
+.reasoning-select:focus {
+    border-color: var(--color-primary);
+    outline: none;
+    box-shadow: 0 0 10px rgba(255, 176, 0, 0.2);
+}
+
+.reasoning-select option {
+    background: var(--color-panel-bg);
+    color: var(--color-text);
+    padding: 10px;
+}
+
+.reasoning-select option:checked {
+    background: var(--color-primary);
+    color: var(--color-background);
+}
+
 .model-note {
     margin-top: var(--gap-sm);
     font-size: 11px;

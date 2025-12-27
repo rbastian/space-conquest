@@ -22,7 +22,6 @@ from ..models.game import Game
 from ..models.order import Order
 from .langchain_client import LangChainClient, MockLangChainClient
 from .middleware import (
-    filter_tools_by_game_state,
     handle_tool_error,
     inject_defensive_urgency,
     inject_threat_vector_analysis,
@@ -63,6 +62,7 @@ class LangGraphPlayer:
         region: str = "us-east-1",
         api_base: str | None = None,
         verbose: bool = False,
+        reasoning_effort: str | None = None,
     ):
         """Initialize LangGraph player.
 
@@ -74,13 +74,16 @@ class LangGraphPlayer:
             region: AWS region (for Bedrock, default: us-east-1)
             api_base: API base URL (for Ollama)
             verbose: Print detailed reasoning (uses more tokens)
+            reasoning_effort: Nova reasoning effort ("low", "medium", "high", or None)
         """
         self.player_id = player_id
         self.verbose = verbose
 
         # Initialize LLM client
         if use_mock:
-            self.client = MockLangChainClient(provider=provider, model_id=model)
+            self.client = MockLangChainClient(
+                provider=provider, model_id=model, reasoning_effort=reasoning_effort
+            )
             logger.info(f"Using mock {provider} client")
         else:
             try:
@@ -91,12 +94,15 @@ class LangGraphPlayer:
                     api_base=api_base,
                     temperature=0.7,
                     max_tokens=4096,
+                    reasoning_effort=reasoning_effort,
                 )
                 logger.info(f"Initialized {provider} client: {self.client.model_id}")
             except Exception as e:
                 logger.error(f"Failed to initialize {provider} client: {e}")
                 logger.info("Falling back to mock client")
-                self.client = MockLangChainClient(provider=provider, model_id=model)
+                self.client = MockLangChainClient(
+                    provider=provider, model_id=model, reasoning_effort=reasoning_effort
+                )
 
         # Build the state graph
         self.graph = self._build_graph()
@@ -185,23 +191,15 @@ class LangGraphPlayer:
                 logger.debug("Injecting threat vector analysis into system prompt")
                 system_prompt += "\n\n" + threat_injection
 
-        # Filter tools based on game state
-        available_tool_names = filter_tools_by_game_state(state)
-        available_tools = [
-            tool_def for tool_def in TOOL_DEFINITIONS if tool_def["name"] in available_tool_names
-        ]
-
-        logger.debug(f"Available tools: {available_tool_names}")
-
         # Convert messages to format expected by LangChain client
         messages_for_client = self._convert_messages_for_client(state["messages"])
 
-        # Invoke LLM
+        # Invoke LLM with all available tools
         try:
             response = self.client.invoke(
                 messages=messages_for_client,
                 system=system_prompt,
-                tools=available_tools,
+                tools=TOOL_DEFINITIONS,
                 max_iterations=1,
             )
 
@@ -231,10 +229,37 @@ class LangGraphPlayer:
                 # LLM wants to use tools
                 content_blocks = response["content_blocks"]
 
-                # Add assistant message to state
-                ai_message = AIMessage(content=content_blocks)
-                # Store tool calls in additional_kwargs for access in routing
-                ai_message.additional_kwargs["tool_calls"] = response.get("tool_calls", [])
+                # Filter content blocks to exclude tool_use blocks (they'll be in tool_calls)
+                # Only keep text and reasoning_content blocks for the message content
+                filtered_content = [
+                    block
+                    for block in content_blocks
+                    if block.get("type") in ("text", "reasoning_content")
+                ]
+
+                # Extract tool calls from response
+                tool_calls = response.get("tool_calls", [])
+
+                # Convert our tool calls format to LangChain format for native attribute
+                # Our format: {"name": ..., "input": ..., "id": ...}
+                # LangChain format: {"name": ..., "args": ..., "id": ..., "type": "tool_call"}
+                langchain_tool_calls = [
+                    {
+                        "name": tc["name"],
+                        "args": tc.get("input", {}),  # Convert "input" to "args"
+                        "id": tc.get("id", "unknown"),
+                        "type": "tool_call",
+                    }
+                    for tc in tool_calls
+                ]
+
+                # Add assistant message to state with native tool_calls attribute in LangChain format
+                ai_message = AIMessage(
+                    content=filtered_content if filtered_content else "",
+                    tool_calls=langchain_tool_calls,  # Use LangChain format
+                )
+                # Also store our format in additional_kwargs for tool execution
+                ai_message.additional_kwargs["tool_calls"] = tool_calls
 
                 return {
                     **state,
@@ -287,22 +312,28 @@ class LangGraphPlayer:
             logger.error("Last message is not AIMessage, skipping tool execution")
             return state
 
-        # Extract tool calls from message content or additional_kwargs
-        content = last_message.content
+        # Extract tool calls from message (prefer additional_kwargs for our format)
         tool_calls = []
 
-        if isinstance(content, list):
-            # Content blocks format
-            for block in content:
+        if "tool_calls" in last_message.additional_kwargs:
+            # Tool calls in metadata (our format with "input" key)
+            tool_calls = last_message.additional_kwargs["tool_calls"]
+            logger.debug(f"Found {len(tool_calls)} tool calls in additional_kwargs")
+        elif isinstance(last_message.content, list):
+            # Fallback: Content blocks format (shouldn't happen after our fix)
+            for block in last_message.content:
                 if block.get("type") == "tool_use":
                     tool_calls.append(block)
-        elif "tool_calls" in last_message.additional_kwargs:
-            # Tool calls in metadata
-            tool_calls = last_message.additional_kwargs["tool_calls"]
+            if tool_calls:
+                logger.debug(f"Found {len(tool_calls)} tool calls in content blocks")
 
         if not tool_calls:
             logger.warning("No tool calls found in last message")
+            logger.debug(f"Message content type: {type(last_message.content)}")
+            logger.debug(f"additional_kwargs keys: {last_message.additional_kwargs.keys()}")
             return state
+
+        logger.info(f"Executing {len(tool_calls)} tool call(s)")
 
         # Get AgentTools instance from state (should be set by get_orders)
         tools = state.get("_tools_instance")
@@ -452,16 +483,24 @@ class LangGraphPlayer:
         if not isinstance(last_message, AIMessage):
             return "end"
 
-        # Check for tool calls in content or metadata
-        content = last_message.content
+        # Check for tool calls in LangChain's tool_calls attribute or additional_kwargs
         has_tool_calls = False
 
-        if isinstance(content, list):
-            has_tool_calls = any(block.get("type") == "tool_use" for block in content)
+        # Check LangChain's native tool_calls attribute (set by ChatBedrockConverse)
+        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+            has_tool_calls = True
+            logger.debug(
+                f"Routing: found {len(last_message.tool_calls)} tool calls in tool_calls attribute"
+            )
+        # Fallback: check additional_kwargs (where we store tool_calls for routing)
         elif "tool_calls" in last_message.additional_kwargs:
-            has_tool_calls = len(last_message.additional_kwargs["tool_calls"]) > 0
+            tool_calls_list = last_message.additional_kwargs["tool_calls"]
+            has_tool_calls = len(tool_calls_list) > 0
+            logger.debug(f"Routing: found {len(tool_calls_list)} tool calls in additional_kwargs")
 
-        return "continue" if has_tool_calls else "end"
+        decision = "continue" if has_tool_calls else "end"
+        logger.debug(f"Routing decision: {decision} (has_tool_calls={has_tool_calls})")
+        return decision
 
     def _convert_messages_for_client(self, messages: list[BaseMessage]) -> list[dict]:
         """Convert LangChain messages to format expected by client.
@@ -478,7 +517,49 @@ class LangGraphPlayer:
             if isinstance(msg, HumanMessage):
                 converted.append({"role": "user", "content": msg.content})
             elif isinstance(msg, AIMessage):
-                converted.append({"role": "assistant", "content": msg.content})
+                # For AIMessage, check if it has tool calls
+                if hasattr(msg, "tool_calls") and msg.tool_calls:
+                    # Build content blocks with text and tool_use blocks
+                    content_blocks = []
+
+                    # Extract text from content if it's a list of blocks
+                    text_content = msg.content
+                    if isinstance(text_content, list):
+                        # Extract text from content blocks
+                        text_parts = []
+                        for block in text_content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                text_parts.append(block.get("text", ""))
+                        text_content = "\n".join(text_parts) if text_parts else ""
+
+                    # Add text block if there's text
+                    if text_content:
+                        content_blocks.append({"type": "text", "text": text_content})
+
+                    # Add tool_use blocks from tool_calls
+                    for tc in msg.tool_calls:
+                        content_blocks.append(
+                            {
+                                "type": "tool_use",
+                                "id": tc.get("id", "unknown"),
+                                "name": tc.get("name"),
+                                "input": tc.get("args", {}),
+                            }
+                        )
+
+                    converted.append({"role": "assistant", "content": content_blocks})
+                else:
+                    # No tool calls - simple text content
+                    content = msg.content
+                    if isinstance(content, list):
+                        # Extract text from content blocks
+                        text_parts = []
+                        for block in content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                text_parts.append(block.get("text", ""))
+                        content = "\n".join(text_parts) if text_parts else ""
+
+                    converted.append({"role": "assistant", "content": content})
             elif isinstance(msg, SystemMessage):
                 # System messages handled separately in invoke
                 continue
@@ -546,7 +627,6 @@ class LangGraphPlayer:
                 "home_garrison": 4,
                 "orders_submitted": False,
             },
-            "available_tools": [],
             "error_count": 0,
             "last_error": None,
             "_tools_instance": tools,  # Store tools in state for nodes to access

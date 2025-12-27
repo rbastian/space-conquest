@@ -106,6 +106,7 @@ async def create_game(request: CreateGameRequest):
             seed=request.seed,
             ai_provider=request.aiProvider,
             ai_model=request.aiModel,
+            reasoning_effort=request.reasoningEffort,
         )
 
         return CreateGameResponse(

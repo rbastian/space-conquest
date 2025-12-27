@@ -11,6 +11,7 @@ from typing import Any
 
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 
+from .message_helpers import normalize_content_blocks
 from .response_models import LLMResponse, UsageMetadata
 
 try:
@@ -116,6 +117,7 @@ class LangChainClient:
         api_base: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.7,
+        reasoning_effort: str | None = None,
     ):
         """Initialize LangChain client.
 
@@ -126,6 +128,7 @@ class LangChainClient:
             api_base: API base URL (for Ollama, default: http://localhost:11434)
             max_tokens: Maximum tokens in response (default: 4096)
             temperature: Sampling temperature (default: 0.7)
+            reasoning_effort: Nova reasoning effort ("low", "medium", "high", or None to disable)
 
         Raises:
             ImportError: If langchain is not installed
@@ -141,10 +144,22 @@ class LangChainClient:
         self.api_base = api_base or "http://localhost:11434"
         self.max_tokens = max_tokens
         self.temperature = temperature
+        self.reasoning_effort = reasoning_effort
+
+        # Validate reasoning_effort if provided
+        if reasoning_effort and reasoning_effort not in ["low", "medium", "high"]:
+            raise ValueError(
+                f"Invalid reasoning_effort '{reasoning_effort}'. Must be 'low', 'medium', or 'high'."
+            )
 
         # Initialize provider-specific client
         self.client = self._create_client()
-        logger.info(f"Initialized {provider} client with model: {self.model_id}")
+
+        # Log initialization with reasoning info
+        log_msg = f"Initialized {provider} client with model: {self.model_id}"
+        if reasoning_effort and "nova" in self.model_id.lower():
+            log_msg += f" (reasoning: {reasoning_effort})"
+        logger.info(log_msg)
 
     def _create_client(self):
         """Create provider-specific LangChain client.
@@ -158,16 +173,42 @@ class LangChainClient:
         """
         try:
             if self.provider == "bedrock":
-                from langchain_aws import ChatBedrock
+                from langchain_aws import ChatBedrockConverse
 
-                return ChatBedrock(
-                    model_id=self.model_id,
-                    region_name=self.region,
-                    model_kwargs={
-                        "max_tokens": self.max_tokens,
-                        "temperature": self.temperature,
-                    },
-                )
+                # Detect if this is a Nova model
+                is_nova = "nova" in self.model_id.lower()
+
+                # Build kwargs for ChatBedrockConverse
+                kwargs = {"model": self.model_id}
+
+                # Nova reasoning configuration via additional_model_request_fields
+                if is_nova and self.reasoning_effort:
+                    # Nova high reasoning requires omitting temperature and max_tokens
+                    if self.reasoning_effort == "high":
+                        logger.info(
+                            "Nova high reasoning: omitting temperature and max_tokens as required by AWS"
+                        )
+                    else:
+                        kwargs["temperature"] = self.temperature
+                        kwargs["max_tokens"] = self.max_tokens
+
+                    # Add reasoningConfig via additional_model_request_fields
+                    kwargs["additional_model_request_fields"] = {
+                        "reasoningConfig": {
+                            "type": "enabled",
+                            "maxReasoningEffort": self.reasoning_effort,
+                        }
+                    }
+                    logger.info(
+                        f"Enabled Nova reasoning with effort={self.reasoning_effort} "
+                        f"(model: {self.model_id})"
+                    )
+                else:
+                    # Non-Nova or no reasoning - include temperature and max_tokens
+                    kwargs["temperature"] = self.temperature
+                    kwargs["max_tokens"] = self.max_tokens
+
+                return ChatBedrockConverse(**kwargs)
 
             elif self.provider == "openai":
                 from langchain_openai import ChatOpenAI
@@ -442,19 +483,13 @@ class LangChainClient:
             # Check if model wants to use tools
             if hasattr(response, "tool_calls") and response.tool_calls:
                 tool_calls_made = []
-                content_blocks = []
 
-                # Add any text content first (reasoning/thinking)
-                if response.content:
-                    content_blocks.append(
-                        {
-                            "type": "text",
-                            "text": response.content,
-                        }
-                    )
-                else:
+                # Parse content blocks (text, reasoning, etc.) using helper
+                content_blocks = normalize_content_blocks(response.content, self.provider)
+
+                if not content_blocks:
                     # Log when there's no reasoning text (common with OpenAI)
-                    logger.debug(f"{self.provider}: No reasoning text provided with tool calls")
+                    logger.debug(f"{self.provider}: No text/reasoning content with tool calls")
 
                 # Then add tool calls
                 for tool_call in response.tool_calls:
@@ -484,11 +519,22 @@ class LangChainClient:
                 }
             else:
                 # No tool calls, return text response
-                text_content = response.content if hasattr(response, "content") else str(response)
+                content = response.content if hasattr(response, "content") else str(response)
+
+                # Parse content blocks (text, reasoning, etc.) using helper
+                content_blocks = normalize_content_blocks(content, self.provider)
+
+                # Extract text for response field (exclude reasoning blocks)
+                text_parts = []
+                for block in content_blocks:
+                    if block.get("type") == "text":
+                        text_parts.append(block["text"])
+
+                response_text = "\n".join(text_parts) if text_parts else ""
 
                 return {
-                    "response": text_content,
-                    "content_blocks": [{"type": "text", "text": text_content}],
+                    "response": response_text,
+                    "content_blocks": content_blocks,
                     "tool_calls": [],
                     "stop_reason": "end_turn",
                     "requires_tool_execution": False,
