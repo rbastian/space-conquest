@@ -1,10 +1,10 @@
 """LangGraph state management models for the agent.
 
 Defines the state structure used throughout the agent's decision-making
-process, including game context, threat assessment, and conversation history.
+process, including conversation history and order submission tracking.
 """
 
-from typing import Any, Literal, TypedDict
+from typing import Any, TypedDict
 
 from langchain_core.messages import BaseMessage
 
@@ -12,25 +12,9 @@ from langchain_core.messages import BaseMessage
 class GameContext(TypedDict):
     """Runtime context about the game state.
 
-    This captures strategic information derived from observations
-    that helps guide decision-making and system prompt generation.
+    Tracks whether orders have been submitted for the current turn.
     """
 
-    turn: int
-    game_phase: Literal["early", "mid", "late"]  # Derived from turn number
-    threat_level: Literal["low", "medium", "high", "critical"]  # Derived from enemy proximity
-
-    # Strategic metrics (from observation)
-    controlled_stars_count: int
-    total_production: int
-    total_ships: int
-
-    # Tactical situation
-    enemy_stars_known: int  # Number of enemy-controlled stars we know about
-    nearest_enemy_distance: int | None  # Distance to nearest known enemy star
-    home_garrison: int  # Ships stationed at home star
-
-    # Decision state
     orders_submitted: bool
 
 

@@ -23,7 +23,6 @@ from ..models.order import Order
 from .langchain_client import LangChainClient, MockLangChainClient
 from .middleware import (
     handle_tool_error,
-    inject_defensive_urgency,
     inject_threat_vector_analysis,
     reset_error_tracking,
     trim_message_history,
@@ -165,23 +164,8 @@ class LangGraphPlayer:
         # Trim message history to prevent unbounded growth
         state = trim_message_history(state)
 
-        # Get game context for dynamic prompt
-        game_context = state.get("game_context")
-
-        # Generate context-aware system prompt
-        if game_context:
-            system_prompt = get_system_prompt(
-                verbose=self.verbose,
-                game_phase=game_context.get("game_phase"),
-                threat_level=game_context.get("threat_level"),
-            )
-
-            # Inject defensive urgency if threat is elevated
-            urgency_injection = inject_defensive_urgency(game_context)
-            if urgency_injection:
-                system_prompt += urgency_injection
-        else:
-            system_prompt = get_system_prompt(verbose=self.verbose)
+        # Generate system prompt
+        system_prompt = get_system_prompt(verbose=self.verbose)
 
         # Inject threat vector analysis if available (from previous observation)
         threat_vectors = state.get("_threat_vectors", [])
@@ -616,15 +600,6 @@ class LangGraphPlayer:
         initial_state: AgentState = {
             "messages": [HumanMessage(content=formatted_state)],
             "game_context": {
-                "turn": game.turn,
-                "game_phase": "early",
-                "threat_level": "low",
-                "controlled_stars_count": 1,
-                "total_production": 4,
-                "total_ships": 4,
-                "enemy_stars_known": 0,
-                "nearest_enemy_distance": None,
-                "home_garrison": 4,
                 "orders_submitted": False,
             },
             "error_count": 0,
