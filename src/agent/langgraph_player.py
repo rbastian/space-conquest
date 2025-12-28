@@ -231,7 +231,7 @@ class LangGraphPlayer:
                     {
                         "name": tc["name"],
                         "args": tc.get("input", {}),  # Convert "input" to "args"
-                        "id": tc.get("id", "unknown"),
+                        "id": tc["id"],  # ID is now guaranteed to exist
                         "type": "tool_call",
                     }
                     for tc in tool_calls
@@ -335,7 +335,8 @@ class LangGraphPlayer:
         for tool_call in tool_calls:
             tool_name = tool_call.get("name")
             tool_input = tool_call.get("input", {})
-            tool_use_id = tool_call.get("id", "unknown")
+            # ID is guaranteed to exist from langchain_client
+            tool_use_id = tool_call["id"]
 
             logger.info(f"  → Calling tool: {tool_name}")
             if tool_input and logger.isEnabledFor(logging.DEBUG):

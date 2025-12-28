@@ -7,6 +7,7 @@ OpenAI, Anthropic API, and Ollama.
 
 import json
 import logging
+import uuid
 from typing import Any
 
 from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
@@ -296,6 +297,7 @@ class LangChainClient:
                     # Extract tool_use blocks and convert to tool_calls format
                     for block in content:
                         if block.get("type") == "tool_use":
+                            # Preserve the ID from the block - don't regenerate
                             tool_calls.append(
                                 {
                                     "name": block.get("name"),
@@ -491,18 +493,32 @@ class LangChainClient:
                     # Log when there's no reasoning text (common with OpenAI)
                     logger.debug(f"{self.provider}: No text/reasoning content with tool calls")
 
-                # Then add tool calls
+                # Track seen IDs to ensure uniqueness
+                seen_tool_ids = set()
+
+                # Then add tool calls with guaranteed unique IDs
                 for tool_call in response.tool_calls:
+                    # Ensure tool has a unique ID
+                    tool_id = tool_call.get("id")
+                    if not tool_id or tool_id in seen_tool_ids:
+                        tool_id = f"tool_{uuid.uuid4().hex[:16]}"
+                        logger.debug(
+                            f"Generated unique ID {tool_id} for tool {tool_call['name']} "
+                            f"(original: {tool_call.get('id')})"
+                        )
+                    seen_tool_ids.add(tool_id)
+
                     tool_calls_made.append(
                         {
                             "name": tool_call["name"],
                             "input": tool_call["args"],
+                            "id": tool_id,  # Use guaranteed unique ID
                         }
                     )
                     content_blocks.append(
                         {
                             "type": "tool_use",
-                            "id": tool_call["id"],
+                            "id": tool_id,  # Use same guaranteed unique ID
                             "name": tool_call["name"],
                             "input": tool_call["args"],
                         }
