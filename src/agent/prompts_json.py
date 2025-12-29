@@ -213,7 +213,6 @@ def format_game_state_prompt_json(game, player_id: str) -> str:
                     "id": star.id,
                     "location": [star.x, star.y],
                     "distance_from_home": dist,
-                    "fog_of_war": True,
                 }
             )
         known_universe["unknown_stars"] = unknown_list
@@ -397,15 +396,18 @@ def format_game_state_prompt_json(game, player_id: str) -> str:
         "recent_events": recent_events
         if recent_events
         else {"message": "No significant events this turn"},
-        "instructions": [
-            "Review the game state data above, focusing on my_empire, opponent, and recent_events",
-            "If enemy positions are detected in opponent intelligence, assess their threat level before planning",
-            "Plan your strategic moves based on the data",
-            "CALL the submit_orders tool with your orders array",
-            "Each order must have: from (star ID), to (star ID), ships (integer), rationale (optional: attack, reinforce, expand, probe, retreat, consolidate)",
-            "If tool returns errors, fix your orders and call submit_orders again",
-            "IMPORTANT: You must ACTUALLY CALL the submit_orders tool - do not write JSON text as a response",
-        ],
     }
 
-    return json.dumps(game_state, indent=2)
+    # Instructions appended as text after JSON
+    instructions = """
+Instructions:
+- Review the game state data above, focusing on my_empire, opponent, and recent_events
+- If enemy positions are detected in opponent intelligence, assess their threat level before planning
+- Plan your strategic moves based on the data
+- CALL the submit_orders tool with your orders array
+- Each order must have: from (star ID), to (star ID), ships (integer), rationale (optional: attack, reinforce, expand, probe, retreat, consolidate)
+- If tool returns errors, fix your orders and call submit_orders again
+- IMPORTANT: You must ACTUALLY CALL the submit_orders tool - do not write JSON text as a response
+"""
+
+    return "JSON GAME_STATE:\n" + json.dumps(game_state, indent=2) + instructions
