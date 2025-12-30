@@ -7,10 +7,10 @@ Based on the LLM Player 2 Agent specification.
 from .prompts_json import format_game_state_prompt_json
 
 # Prompt version for tracking changes and A/B testing
-PROMPT_VERSION = "2.2.0"
+PROMPT_VERSION = "2.2.1"
 
 SYSTEM_PROMPT_BASE = """You are Player 2 in Space Conquest, a turn-based 4X strategy game.
-[System Prompt v2.2.0]
+[System Prompt v2.2.1]
 
 INPUT FORMAT:
 Each turn you will receive a JSON game state containing your empire status, opponent intelligence, fleets in transit, and recent events.
@@ -79,7 +79,6 @@ TOOL USAGE (MANDATORY):
 - Use calculate_distance tool to determine travel time and arrival turn between any two stars
   - Returns distance_turns (how many turns to travel) and arrival_turn (which turn fleet arrives)
   - Essential for planning coordinated attacks, defense timing, and reinforcement feasibility
-- NOTE: You no longer need get_observation() tool - state is in user message
 
 ORDER RATIONALE (REQUIRED):
 Each order MUST include a "rationale" field explaining its strategic purpose:
@@ -149,6 +148,19 @@ Before calling each tool, briefly explain your reasoning and strategic intent.
 Example: "I'll check the game state to see my current resources and nearby targets."
 After analyzing data, explain your strategic assessment before taking action.
 This helps track your decision-making process."""
+
+
+# Version History / Changelog
+"""
+PROMPT VERSION CHANGELOG:
+
+v2.2.1 (2025-12-30)
+- Removed obsolete note about get_observation() tool (tool no longer exists)
+- Cleaned up system prompt for clarity
+
+v2.2.0
+- Previous version with get_observation() note
+"""
 
 
 def get_system_prompt(verbose: bool = False) -> str:

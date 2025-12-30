@@ -55,59 +55,231 @@ class LangGraphPlayer:
     def __init__(
         self,
         player_id: str = "p2",
+        # NEW: Dependency injection params
+        llm=None,  # Raw LLM (ChatBedrockConverse, ChatAnthropic, etc.)
+        game: Game | None = None,  # Game reference
+        tools=None,  # AgentTools instance
+        tool_definitions: list | None = None,  # TOOL_DEFINITIONS list
+        system_prompt: str | None = None,  # System prompt string
+        verbose: bool = False,
+        # OLD: Legacy params (for backward compatibility)
         use_mock: bool = False,
         provider: str = "bedrock",
         model: str | None = None,
         region: str = "us-east-1",
         api_base: str | None = None,
-        verbose: bool = False,
         reasoning_effort: str | None = None,
     ):
         """Initialize LangGraph player.
 
+        Supports two initialization patterns:
+
+        1. Dependency Injection (NEW - Preferred):
+           llm = create_llm_for_agent(...)
+           tools_instance, tool_defs = create_langgraph_tools(game, "p2")
+           system_prompt = get_system_prompt(verbose=False)
+           player = LangGraphPlayer(
+               player_id="p2", llm=llm, game=game,
+               tools=tools_instance, tool_definitions=tool_defs,
+               system_prompt=system_prompt, verbose=False
+           )
+
+        2. Legacy (OLD - Backward Compatible):
+           player = LangGraphPlayer(
+               "p2", use_mock=False, provider="bedrock",
+               model="haiku", verbose=False
+           )
+
         Args:
             player_id: Player ID ("p1" or "p2", default: "p2")
+
+            Dependency injection params (NEW):
+            llm: Raw LLM instance (ChatBedrockConverse, ChatAnthropic, etc.)
+            game: Game object reference
+            tools: AgentTools instance
+            tool_definitions: TOOL_DEFINITIONS list
+            system_prompt: System prompt string
+            verbose: Print detailed reasoning (uses more tokens)
+
+            Legacy params (OLD - for backward compatibility):
             use_mock: Use mock client instead of real LLM (for testing)
             provider: LLM provider ("bedrock", "openai", "anthropic", "ollama")
             model: Model name (provider-specific) or None for provider default
             region: AWS region (for Bedrock, default: us-east-1)
             api_base: API base URL (for Ollama)
-            verbose: Print detailed reasoning (uses more tokens)
             reasoning_effort: Nova reasoning effort ("low", "medium", "high", or None)
         """
         self.player_id = player_id
         self.verbose = verbose
 
-        # Initialize LLM client
-        if use_mock:
-            self.client = MockLangChainClient(
-                provider=provider, model_id=model, reasoning_effort=reasoning_effort
+        # Store injected dependencies
+        self.game = game
+        self.tools = tools
+        self.tool_definitions = (
+            tool_definitions if tool_definitions is not None else TOOL_DEFINITIONS
+        )
+        self.system_prompt = system_prompt
+
+        # Dual path: injected LLM or create client wrapper
+        if llm is not None:
+            # NEW PATH: Use injected raw LLM
+            self.llm = llm
+            self.client = None  # No wrapper when using raw LLM
+
+            # Extract model name for logging
+            llm_model = (
+                getattr(llm, "model_id", None)  # ChatBedrockConverse
+                or getattr(llm, "model", None)  # ChatAnthropic, ChatOllama
+                or getattr(llm, "model_name", None)  # ChatOpenAI
+                or "unknown"
             )
-            logger.info(f"Using mock {provider} client")
+            logger.info(
+                f"LangGraphPlayer initialized for {player_id} with injected LLM: {llm_model}"
+            )
         else:
-            try:
-                self.client = LangChainClient(
-                    provider=provider,
-                    model_id=model,
-                    region=region,
-                    api_base=api_base,
-                    temperature=0.7,
-                    max_tokens=4096,
-                    reasoning_effort=reasoning_effort,
-                )
-                logger.info(f"Initialized {provider} client: {self.client.model_id}")
-            except Exception as e:
-                logger.error(f"Failed to initialize {provider} client: {e}")
-                logger.info("Falling back to mock client")
+            # OLD PATH: Create LangChainClient wrapper
+            self.llm = None
+
+            if use_mock:
                 self.client = MockLangChainClient(
                     provider=provider, model_id=model, reasoning_effort=reasoning_effort
                 )
+                logger.info(f"Using mock {provider} client")
+            else:
+                try:
+                    self.client = LangChainClient(
+                        provider=provider,
+                        model_id=model,
+                        region=region,
+                        api_base=api_base,
+                        temperature=0.7,
+                        max_tokens=4096,
+                        reasoning_effort=reasoning_effort,
+                    )
+                    logger.info(f"Initialized {provider} client: {self.client.model_id}")
+                except Exception as e:
+                    logger.error(f"Failed to initialize {provider} client: {e}")
+                    logger.info("Falling back to mock client")
+                    self.client = MockLangChainClient(
+                        provider=provider, model_id=model, reasoning_effort=reasoning_effort
+                    )
 
         # Build the state graph
         self.graph = self._build_graph()
 
         # Strategic logger (initialized on first turn)
         self.strategic_logger: StrategicLogger | None = None
+
+    def _convert_raw_llm_response_to_internal(self, ai_message: AIMessage) -> dict:
+        """Convert raw LLM AIMessage to internal LLMResponse format.
+
+        Extracts tool_calls, content blocks, and usage metadata from AIMessage
+        and returns a dict compatible with existing code expecting LLMResponse.
+
+        Args:
+            ai_message: AIMessage from raw LLM invoke
+
+        Returns:
+            Dict with keys: content_blocks, requires_tool_execution, tool_calls,
+            stop_reason, response, usage_metadata
+        """
+        # Extract content blocks
+        content_blocks = []
+        if isinstance(ai_message.content, str):
+            if ai_message.content.strip():
+                content_blocks.append({"type": "text", "text": ai_message.content})
+        elif isinstance(ai_message.content, list):
+            # Already in block format
+            content_blocks = ai_message.content
+
+        # Extract tool calls
+        tool_calls = []
+        requires_tool_execution = False
+
+        if hasattr(ai_message, "tool_calls") and ai_message.tool_calls:
+            requires_tool_execution = True
+            # Convert LangChain tool_calls format to our format
+            # LangChain: {"name": ..., "args": ..., "id": ..., "type": "tool_call"}
+            # Our format: {"name": ..., "input": ..., "id": ...}
+            for tc in ai_message.tool_calls:
+                tool_calls.append(
+                    {
+                        "name": tc.get("name"),
+                        "input": tc.get("args", {}),  # Convert "args" to "input"
+                        "id": tc.get("id"),
+                    }
+                )
+
+        # Extract usage metadata
+        usage = self._extract_usage_metadata(ai_message)
+
+        # Build response dict
+        response_text = ""
+        if isinstance(ai_message.content, str):
+            response_text = ai_message.content
+        elif isinstance(ai_message.content, list):
+            # Extract text from blocks
+            text_parts = []
+            for block in ai_message.content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+            response_text = "\n".join(text_parts)
+
+        return {
+            "content_blocks": content_blocks,
+            "requires_tool_execution": requires_tool_execution,
+            "tool_calls": tool_calls,
+            "stop_reason": "end_turn" if not requires_tool_execution else "tool_use",
+            "response": response_text,
+            "usage_metadata": usage,
+        }
+
+    def _extract_usage_metadata(self, ai_message: AIMessage) -> dict:
+        """Extract token usage from AIMessage.
+
+        Handles both usage_metadata and additional_kwargs["usage"] formats.
+
+        Args:
+            ai_message: AIMessage from LLM
+
+        Returns:
+            Dict with input_tokens, output_tokens, total_tokens
+        """
+        usage = {}
+
+        if hasattr(ai_message, "usage_metadata") and ai_message.usage_metadata:
+            # LangChain's usage_metadata attribute
+            usage = {
+                "input_tokens": ai_message.usage_metadata.get("input_tokens", 0),
+                "output_tokens": ai_message.usage_metadata.get("output_tokens", 0),
+                "total_tokens": ai_message.usage_metadata.get("total_tokens", 0),
+            }
+        elif hasattr(ai_message, "additional_kwargs") and "usage" in ai_message.additional_kwargs:
+            # Usage in additional_kwargs
+            u = ai_message.additional_kwargs["usage"]
+            usage = {
+                "input_tokens": u.get("prompt_tokens", u.get("input_tokens", 0)),
+                "output_tokens": u.get("completion_tokens", u.get("output_tokens", 0)),
+                "total_tokens": u.get("total_tokens", 0),
+            }
+
+        return usage
+
+    def _convert_tools_to_langchain(self, tools: list[dict]) -> list[dict]:
+        """Convert tool definitions to LangChain bind_tools format.
+
+        Our TOOL_DEFINITIONS format uses "input_schema" with JSON Schema.
+        LangChain expects similar format for bind_tools.
+
+        Args:
+            tools: List of tool definition dicts from TOOL_DEFINITIONS
+
+        Returns:
+            List of tool defs in LangChain format
+        """
+        # TOOL_DEFINITIONS format is already compatible with LangChain bind_tools
+        # Just return as-is (both use JSON Schema with "name", "description", "input_schema")
+        return tools
 
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph StateGraph for agent execution.
@@ -164,8 +336,12 @@ class LangGraphPlayer:
         # Trim message history to prevent unbounded growth
         state = trim_message_history(state)
 
-        # Generate system prompt
-        system_prompt = get_system_prompt(verbose=self.verbose)
+        # Use injected system prompt if available, otherwise generate it
+        if self.system_prompt is not None:
+            system_prompt = self.system_prompt
+        else:
+            # Legacy path: generate system prompt
+            system_prompt = get_system_prompt(verbose=self.verbose)
 
         # Inject threat vector analysis if available (from previous observation)
         threat_vectors = state.get("_threat_vectors", [])
@@ -175,17 +351,34 @@ class LangGraphPlayer:
                 logger.debug("Injecting threat vector analysis into system prompt")
                 system_prompt += "\n\n" + threat_injection
 
-        # Convert messages to format expected by LangChain client
-        messages_for_client = self._convert_messages_for_client(state["messages"])
-
         # Invoke LLM with all available tools
         try:
-            response = self.client.invoke(
-                messages=messages_for_client,
-                system=system_prompt,
-                tools=TOOL_DEFINITIONS,
-                max_iterations=1,
-            )
+            if self.llm is not None:
+                # NEW PATH: Use raw LLM with bind_tools
+                # Build messages: [SystemMessage, ...conversation...]
+                from langchain_core.messages import SystemMessage
+
+                lc_messages = state["messages"]
+                full_messages = [SystemMessage(content=system_prompt)] + lc_messages
+
+                # Bind tools to LLM
+                lc_tools = self._convert_tools_to_langchain(self.tool_definitions)
+                llm_with_tools = self.llm.bind_tools(lc_tools)
+
+                # Invoke and convert response
+                ai_message = llm_with_tools.invoke(full_messages)
+                response = self._convert_raw_llm_response_to_internal(ai_message)
+            else:
+                # OLD PATH: Use LangChainClient wrapper
+                # Convert messages to format expected by LangChain client
+                messages_for_client = self._convert_messages_for_client(state["messages"])
+
+                response = self.client.invoke(
+                    messages=messages_for_client,
+                    system=system_prompt,
+                    tools=self.tool_definitions,
+                    max_iterations=1,
+                )
 
             # Create view for easier inspection
             view = ResponseView.from_response(response)
@@ -571,9 +764,15 @@ class LangGraphPlayer:
         """
         logger.info(f"Getting orders for {self.player_id} (Turn {game.turn})")
 
-        # Initialize tools for this turn
-        tools = AgentTools(game, self.player_id)
-        tools.reset_turn()
+        # Use injected tools if available, otherwise create them (legacy path)
+        if self.tools is not None:
+            tools = self.tools
+            tools.game = game  # Update game reference (mutated each turn)
+            tools.reset_turn()
+        else:
+            # Legacy path: create AgentTools
+            tools = AgentTools(game, self.player_id)
+            tools.reset_turn()
 
         # Import format function
         from .prompts import format_game_state_prompt
