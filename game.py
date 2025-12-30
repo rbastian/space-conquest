@@ -10,6 +10,10 @@ import logging
 import sys
 
 from src.agent.langgraph_player import LangGraphPlayer
+from src.agent.llm_factory import LLMFactory
+from src.agent.prompts import get_system_prompt
+from src.agent.react_player import ReactPlayer
+from src.agent.react_tools import create_react_tools
 from src.engine.map_generator import generate_map
 from src.engine.turn_executor import TurnExecutor
 from src.interface.display import DisplayManager
@@ -42,7 +46,27 @@ class GameOrchestrator:
 
         # Extract and store p2 model ID for display name generation
         if isinstance(p2_controller, LangGraphPlayer):
-            self.game.p2_model_id = p2_controller.client.model_id
+            # LangGraphPlayer: check both client (legacy) and llm (dependency injection)
+            if p2_controller.client is not None:
+                # Legacy path: client wrapper
+                self.game.p2_model_id = p2_controller.client.model_id
+            else:
+                # Dependency injection path: raw LLM
+                self.game.p2_model_id = (
+                    getattr(p2_controller.llm, "model_id", None)  # ChatBedrockConverse
+                    or getattr(p2_controller.llm, "model", None)  # ChatAnthropic, ChatOllama
+                    or getattr(p2_controller.llm, "model_name", None)  # ChatOpenAI
+                    or "langgraph-agent"
+                )
+        elif isinstance(p2_controller, ReactPlayer):
+            # ReactPlayer: always uses raw LLM
+            # Different LLM classes use different attribute names
+            self.game.p2_model_id = (
+                getattr(p2_controller.llm, "model_id", None)  # ChatBedrockConverse
+                or getattr(p2_controller.llm, "model", None)  # ChatAnthropic, ChatOllama
+                or getattr(p2_controller.llm, "model_name", None)  # ChatOpenAI
+                or "react-agent"
+            )
 
     def run(self) -> Game:
         """Main game loop."""
@@ -147,6 +171,38 @@ class GameOrchestrator:
         )
 
 
+def create_llm_for_agent(provider, model, region, api_base, reasoning_effort):
+    """Create LLM using LLMFactory pattern.
+
+    Args:
+        provider: LLM provider (bedrock, openai, anthropic, ollama)
+        model: Model name
+        region: AWS region for Bedrock
+        api_base: API base URL for Ollama
+        reasoning_effort: Nova reasoning effort level
+
+    Returns:
+        LangChain ChatModel instance
+    """
+    factory = LLMFactory(region=region, api_base=api_base)
+
+    if provider == "bedrock":
+        return factory.create_bedrock_llm(
+            model=model,
+            temperature=0.7,
+            max_tokens=4096,
+            reasoning_effort=reasoning_effort,
+        )
+    elif provider == "openai":
+        return factory.create_openai_llm(model=model)
+    elif provider == "anthropic":
+        return factory.create_anthropic_llm(model=model)
+    elif provider == "ollama":
+        return factory.create_ollama_llm(model=model)
+
+    raise ValueError(f"Unsupported provider: {provider}")
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -222,8 +278,49 @@ Examples:
         action="store_true",
         help="Use terminal user interface (TUI) for human players instead of basic text mode",
     )
+    parser.add_argument(
+        "--agent",
+        choices=["langgraph", "react"],
+        default="langgraph",
+        help="Agent type: langgraph=StateGraph (default), react=ReAct pattern (simpler). Used for hvl mode and as default for lvl mode.",
+    )
+    parser.add_argument(
+        "--p1-agent",
+        choices=["langgraph", "react"],
+        default=None,
+        help="Player 1 agent type for lvl mode (overrides --agent for p1). Defaults to --agent if not specified.",
+    )
+    parser.add_argument(
+        "--p2-agent",
+        choices=["langgraph", "react"],
+        default=None,
+        help="Player 2 agent type for lvl mode (overrides --agent for p2). Defaults to --agent if not specified.",
+    )
+    parser.add_argument(
+        "--p1-model",
+        type=str,
+        default=None,
+        help="Player 1 model for lvl mode (overrides --model for p1). Defaults to --model if not specified.",
+    )
+    parser.add_argument(
+        "--p2-model",
+        type=str,
+        default=None,
+        help="Player 2 model for lvl mode (overrides --model for p2). Defaults to --model if not specified.",
+    )
 
     args = parser.parse_args()
+
+    # Apply defaults for per-player settings in lvl mode
+    if args.mode == "lvl":
+        if args.p1_agent is None:
+            args.p1_agent = args.agent
+        if args.p2_agent is None:
+            args.p2_agent = args.agent
+        if args.p1_model is None:
+            args.p1_model = args.model
+        if args.p2_model is None:
+            args.p2_model = args.model
 
     # Configure logging to display LLM reasoning and tool use
     # This shows all the LLM's thinking when verbose=True in LangGraphPlayer
@@ -287,49 +384,186 @@ Examples:
         else:
             p1 = HumanPlayer("p1")
         try:
-            # Try to use real LLM client, fall back to mock if unavailable
-            p2 = LangGraphPlayer(
-                "p2",
-                use_mock=False,
-                provider=args.provider,
-                model=args.model,
-                api_base=args.api_base,
-                verbose=args.debug,
-                reasoning_effort=args.reasoning_effort,
-            )
+            if args.agent == "langgraph":
+                # LangGraphPlayer with dependency injection pattern
+                llm = create_llm_for_agent(
+                    args.provider,
+                    args.model,
+                    "us-east-1",
+                    args.api_base,
+                    args.reasoning_effort,
+                )
+
+                # Create tools with game state reference
+                from src.agent.langgraph_tools import create_langgraph_tools
+
+                tools_instance, tool_defs = create_langgraph_tools(game, "p2")
+
+                # Get system prompt
+                system_prompt = get_system_prompt(verbose=args.debug)
+
+                # Inject dependencies
+                p2 = LangGraphPlayer(
+                    player_id="p2",
+                    llm=llm,
+                    game=game,
+                    tools=tools_instance,
+                    tool_definitions=tool_defs,
+                    system_prompt=system_prompt,
+                    verbose=args.debug,
+                )
+            else:  # react
+                # ReactPlayer pattern with dependency injection
+                llm = create_llm_for_agent(
+                    args.provider,
+                    args.model,
+                    "us-east-1",  # Default region
+                    args.api_base,
+                    args.reasoning_effort,
+                )
+
+                # Create tools with game state reference
+                tools = create_react_tools(game, "p2")
+
+                # Get system prompt with orders return instruction
+                system_prompt = get_system_prompt(verbose=args.debug)
+                system_prompt += (
+                    "\n\nIMPORTANT: After using the helper tools to validate your strategy, "
+                    "return your final orders as a JSON array in this exact format:\n"
+                    '[{"from": "A", "to": "B", "ships": 10, "rationale": "attack"}]\n\n'
+                    "Do not include any other text after the JSON array."
+                )
+
+                p2 = ReactPlayer(
+                    llm=llm,
+                    game=game,
+                    player_id="p2",
+                    tools=tools,
+                    system_prompt=system_prompt,
+                    verbose=args.debug,
+                )
+
             print("LLM player initialized successfully!")
         except Exception as e:
             print(f"Warning: Could not initialize {args.provider} client: {e}")
-            print("Falling back to mock LLM player (for testing only)")
-            p2 = LangGraphPlayer("p2", use_mock=True, verbose=args.debug)
+            print(f"Error details: {e}")
+            if args.agent == "langgraph":
+                print("Falling back to mock LLM player (for testing only)")
+                p2 = LangGraphPlayer("p2", use_mock=True, verbose=args.debug)
+            else:
+                sys.exit(1)
     else:  # lvl
-        model_display = args.model or f"{args.provider} default"
-        print(f"Initializing LLM vs LLM game ({args.provider} provider, model: {model_display})...")
+        # Display per-player configuration
+        p1_model_display = args.p1_model or f"{args.provider} default"
+        p2_model_display = args.p2_model or f"{args.provider} default"
+        print(f"Initializing LLM vs LLM game ({args.provider} provider)...")
+        print(f"  Player 1: {args.p1_agent} agent, model: {p1_model_display}")
+        print(f"  Player 2: {args.p2_agent} agent, model: {p2_model_display}")
         try:
-            p1 = LangGraphPlayer(
-                "p1",
-                use_mock=False,
-                provider=args.provider,
-                model=args.model,
-                api_base=args.api_base,
-                verbose=args.debug,
-                reasoning_effort=args.reasoning_effort,
+            # Create LLMs for both players (may be different models)
+            llm1 = create_llm_for_agent(
+                args.provider,
+                args.p1_model,
+                "us-east-1",
+                args.api_base,
+                args.reasoning_effort,
             )
-            p2 = LangGraphPlayer(
-                "p2",
-                use_mock=False,
-                provider=args.provider,
-                model=args.model,
-                api_base=args.api_base,
-                verbose=args.debug,
-                reasoning_effort=args.reasoning_effort,
+            llm2 = create_llm_for_agent(
+                args.provider,
+                args.p2_model,
+                "us-east-1",
+                args.api_base,
+                args.reasoning_effort,
             )
+
+            # Create player 1 based on --p1-agent
+            if args.p1_agent == "langgraph":
+                from src.agent.langgraph_tools import create_langgraph_tools
+
+                tools1_instance, tool_defs1 = create_langgraph_tools(game, "p1")
+                system_prompt1 = get_system_prompt(verbose=args.debug)
+
+                p1 = LangGraphPlayer(
+                    player_id="p1",
+                    llm=llm1,
+                    game=game,
+                    tools=tools1_instance,
+                    tool_definitions=tool_defs1,
+                    system_prompt=system_prompt1,
+                    verbose=args.debug,
+                )
+            else:  # react
+                tools1 = create_react_tools(game, "p1")
+                system_prompt1 = get_system_prompt(verbose=args.debug)
+                system_prompt1 += (
+                    "\n\nIMPORTANT: After using the helper tools to validate your strategy, "
+                    "return your final orders as a JSON array in this exact format:\n"
+                    '[{"from": "A", "to": "B", "ships": 10, "rationale": "attack"}]\n\n'
+                    "Do not include any other text after the JSON array."
+                )
+
+                p1 = ReactPlayer(
+                    llm=llm1,
+                    game=game,
+                    player_id="p1",
+                    tools=tools1,
+                    system_prompt=system_prompt1,
+                    verbose=args.debug,
+                )
+
+            # Create player 2 based on --p2-agent
+            if args.p2_agent == "langgraph":
+                from src.agent.langgraph_tools import create_langgraph_tools
+
+                tools2_instance, tool_defs2 = create_langgraph_tools(game, "p2")
+                system_prompt2 = get_system_prompt(verbose=args.debug)
+
+                p2 = LangGraphPlayer(
+                    player_id="p2",
+                    llm=llm2,
+                    game=game,
+                    tools=tools2_instance,
+                    tool_definitions=tool_defs2,
+                    system_prompt=system_prompt2,
+                    verbose=args.debug,
+                )
+            else:  # react
+                tools2 = create_react_tools(game, "p2")
+                system_prompt2 = get_system_prompt(verbose=args.debug)
+                system_prompt2 += (
+                    "\n\nIMPORTANT: After using the helper tools to validate your strategy, "
+                    "return your final orders as a JSON array in this exact format:\n"
+                    '[{"from": "A", "to": "B", "ships": 10, "rationale": "attack"}]\n\n'
+                    "Do not include any other text after the JSON array."
+                )
+
+                p2 = ReactPlayer(
+                    llm=llm2,
+                    game=game,
+                    player_id="p2",
+                    tools=tools2,
+                    system_prompt=system_prompt2,
+                    verbose=args.debug,
+                )
+
             print("Both LLM players initialized successfully!")
         except Exception as e:
             print(f"Warning: Could not initialize {args.provider} client: {e}")
             print("Falling back to mock LLM players (for testing only)")
-            p1 = LangGraphPlayer("p1", use_mock=True, verbose=args.debug)
-            p2 = LangGraphPlayer("p2", use_mock=True, verbose=args.debug)
+            # Create mock players based on per-player agent types
+            if args.p1_agent == "langgraph":
+                p1 = LangGraphPlayer("p1", use_mock=True, verbose=args.debug)
+            else:
+                # React agent doesn't have mock mode, exit
+                print("Error: React agent requires working LLM provider")
+                sys.exit(1)
+
+            if args.p2_agent == "langgraph":
+                p2 = LangGraphPlayer("p2", use_mock=True, verbose=args.debug)
+            else:
+                # React agent doesn't have mock mode, exit
+                print("Error: React agent requires working LLM provider")
+                sys.exit(1)
 
     # Run game
     orchestrator = GameOrchestrator(game, p1, p2, use_tui=args.tui)

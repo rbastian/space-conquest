@@ -1,6 +1,5 @@
 """Tests for message content parsing helpers."""
 
-
 from src.agent.message_helpers import (
     extract_anthropic_claude_blocks,
     extract_nova_blocks,
