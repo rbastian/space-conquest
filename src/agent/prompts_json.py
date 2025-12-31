@@ -35,7 +35,7 @@ def format_game_state_prompt_json(game, player_id: str) -> str:
     # Categorize stars
     my_stars = [s for s in game.stars if s.owner == player_id]
     enemy_stars = [s for s in game.stars if s.owner == opponent_id and s.id in player.visited_stars]
-    npc_stars = [s for s in game.stars if s.owner == "npc" and s.id in player.visited_stars]
+    npc_stars = [s for s in game.stars if s.owner is None and s.id in player.visited_stars]
     unknown_stars = [s for s in game.stars if s.id not in player.visited_stars]
 
     # === SPATIAL AWARENESS ===
