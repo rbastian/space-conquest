@@ -397,3 +397,42 @@ def test_player_controlled_star_attacked():
     assert star.owner == "p2"
     assert star.stationed_ships["p2"] == 5  # 7 - ceil(4/2) = 7 - 2 = 5
     assert star.stationed_ships["p1"] == 0
+
+
+def test_npc_combat_tie():
+    """Test combat tie at NPC star - star should remain uncontrolled."""
+    game = Game(seed=42, turn=0)
+
+    # Create NPC star with equal forces (will result in tie)
+    star = Star(
+        id="A",
+        name="Altair",
+        x=5,
+        y=5,
+        base_ru=2,
+        owner=None,
+        npc_ships=5,
+        stationed_ships={"p1": 5},
+    )
+    game.stars = [star]
+
+    # Create players
+    game.players = {
+        "p1": Player(id="p1", home_star="B"),
+        "p2": Player(id="p2", home_star="C"),
+    }
+
+    # Process combat
+    game, combat_events = process_combat(game)
+
+    # Both forces eliminated in tie
+    assert star.npc_ships == 0
+    assert star.stationed_ships["p1"] == 0
+    assert star.owner is None  # Star remains uncontrolled
+
+    # Verify combat event recorded the tie
+    assert len(combat_events) == 1
+    assert combat_events[0].winner is None
+    assert combat_events[0].combat_type == "npc"
+    assert combat_events[0].attacker_survivors == 0
+    assert combat_events[0].defender_survivors == 0
