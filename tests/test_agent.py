@@ -139,7 +139,7 @@ class TestAgentTools:
         """Test that all tools are defined."""
         tool_names = {td["name"] for td in TOOL_DEFINITIONS}
 
-        # Check that both tools exist
+        # Check that all tools exist
         assert "submit_orders" in tool_names
         assert "calculate_distance" in tool_names
         assert len(tool_names) == 2

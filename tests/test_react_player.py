@@ -62,7 +62,7 @@ class TestReactTools:
     def test_create_tools_returns_list(self, tools):
         """Test that create_react_tools returns a list."""
         assert isinstance(tools, list)
-        assert len(tools) == 2  # validate_orders, calculate_distance
+        assert len(tools) == 3  # validate_orders, calculate_distance, get_nearby_garrisons
 
     def test_validate_orders_valid(self, game, tools):
         """Test validate_orders with valid orders."""
@@ -158,6 +158,103 @@ class TestReactTools:
         assert result["distance_turns"] >= 0
         assert result["arrival_turn"] == game.turn + result["distance_turns"]
 
+    def test_get_nearby_garrisons_basic(self, game, tools):
+        """Test get_nearby_garrisons tool returns correct structure."""
+        # Setup: Create some p2 garrisons
+        target_star = game.stars[0]
+        target_star.owner = None  # Make target neutral
+
+        # Create garrisons
+        for i in range(1, 4):
+            star = game.stars[i]
+            star.owner = "p2"
+            star.stationed_ships["p2"] = 5 + i
+
+        # Get get_nearby_garrisons tool (index 2)
+        garrison_tool = tools[2]
+        result = garrison_tool.invoke({"target": target_star.id})
+
+        assert "target" in result
+        assert result["target"]["id"] == target_star.id
+        assert result["target"]["name"] == target_star.name
+
+        assert "garrisons" in result
+        assert len(result["garrisons"]) <= 3
+
+        # Check garrison structure
+        for garrison in result["garrisons"]:
+            assert "star_id" in garrison
+            assert "star_name" in garrison
+            assert "location" in garrison
+            assert "stationed_ships" in garrison
+            assert "distance_turns" in garrison
+            assert "arrival_turn" in garrison
+            assert "ru" in garrison
+            assert "is_home" in garrison
+
+    def test_get_nearby_garrisons_max_3_results(self, game, tools):
+        """Test that at most 3 garrisons are returned."""
+        target_star = game.stars[0]
+
+        # Create 5 garrisons (more than the limit)
+        for i in range(1, 6):
+            star = game.stars[i]
+            star.owner = "p2"
+            star.stationed_ships["p2"] = 5
+
+        garrison_tool = tools[2]
+        result = garrison_tool.invoke({"target": target_star.id})
+
+        # Should only return 3 closest
+        assert len(result["garrisons"]) <= 3
+
+    def test_get_nearby_garrisons_sorted_by_distance(self, game, tools):
+        """Test that garrisons are sorted by distance (closest first)."""
+        # Pick a target in the corner
+        target_star = game.stars[0]
+        target_star.x = 0
+        target_star.y = 0
+        target_star.owner = None
+
+        # Create garrisons at known distances
+        close = game.stars[1]
+        close.x = 2
+        close.y = 1
+        close.owner = "p2"
+        close.stationed_ships["p2"] = 5
+
+        far = game.stars[2]
+        far.x = 8
+        far.y = 6
+        far.owner = "p2"
+        far.stationed_ships["p2"] = 10
+
+        garrison_tool = tools[2]
+        result = garrison_tool.invoke({"target": target_star.id})
+
+        # Should be sorted by distance
+        distances = [g["distance_turns"] for g in result["garrisons"]]
+        assert distances == sorted(distances), "Garrisons not sorted by distance"
+
+    def test_get_nearby_garrisons_logging(self, game, tools, caplog):
+        """Test that get_nearby_garrisons logs correctly."""
+        import logging
+        caplog.set_level(logging.INFO)
+
+        target_star = game.stars[0]
+
+        # Create a garrison
+        star = game.stars[1]
+        star.owner = "p2"
+        star.stationed_ships["p2"] = 5
+
+        garrison_tool = tools[2]
+        garrison_tool.invoke({"target": target_star.id})
+
+        # Check logging
+        log_messages = [record.message for record in caplog.records]
+        assert any("[TOOL] get_nearby_garrisons" in msg for msg in log_messages)
+
 
 class TestReactPlayer:
     """Test suite for ReactPlayer agent implementation."""
@@ -201,7 +298,7 @@ class TestReactPlayer:
         assert player.player_id == "p2"
         assert player.agent is not None
         assert player.llm is not None
-        assert len(player.tools) == 2
+        assert len(player.tools) == 3
 
     def test_get_orders_returns_list(self, player, game):
         """Test that get_orders returns a list."""
