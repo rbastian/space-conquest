@@ -431,6 +431,7 @@ class DisplayManager:
         combat_events: list["CombatEvent"],
         hyperspace_losses: list["HyperspaceLoss"],
         rebellion_events: list["RebellionEvent"],
+        tool_usage_stats: dict[str, dict[str, int]] | None = None,
     ) -> None:
         """Display enhanced victory screen with final turn events and statistics.
 
@@ -439,13 +440,15 @@ class DisplayManager:
         2. Final turn events (home star battles, other combats, arrivals, production)
         3. Final map state with no fog-of-war
         4. Comparative statistics table
-        5. Game metadata
+        5. Tool usage statistics (if available)
+        6. Game metadata
 
         Args:
             game: Final game state with winner set
             combat_events: Combat events from final turn
             hyperspace_losses: Hyperspace losses from final turn
             rebellion_events: Rebellion events from final turn
+            tool_usage_stats: Optional dict mapping player IDs to their tool usage counts
         """
         # Import here to avoid circular dependency
 
@@ -464,6 +467,10 @@ class DisplayManager:
 
         # Display comparative statistics
         self._show_statistics_table(game)
+
+        # Display tool usage statistics if available
+        if tool_usage_stats:
+            self._show_tool_usage_table(game, tool_usage_stats)
 
         # Display game metadata
         print(f"\nGame Duration: {game.turn} turns")
@@ -853,6 +860,59 @@ class DisplayManager:
         )
         print()
 
+    def _show_tool_usage_table(
+        self, game: Game, tool_usage_stats: dict[str, dict[str, int]]
+    ) -> None:
+        """Display tool usage statistics table.
+
+        Shows side-by-side comparison of tool usage for both players.
+
+        Args:
+            game: Final game state
+            tool_usage_stats: Dictionary mapping player IDs to their tool usage counts
+        """
+        print("--- TOOL USAGE STATISTICS ---\n")
+
+        # Get player display names
+        p1_name = self._get_display_name("p1", game)
+        p2_name = self._get_display_name("p2", game)
+        # Truncate names to fit in columns (max 18 chars for display)
+        p1_display = p1_name[:18] if len(p1_name) > 18 else p1_name
+        p2_display = p2_name[:18] if len(p2_name) > 18 else p2_name
+
+        # Get tool usage data (default to empty dict if player not in stats)
+        p1_tools = tool_usage_stats.get("p1", {})
+        p2_tools = tool_usage_stats.get("p2", {})
+
+        # Collect all unique tool names and sort alphabetically
+        all_tool_names = sorted(set(list(p1_tools.keys()) + list(p2_tools.keys())))
+
+        if not all_tool_names:
+            print("No tool usage data available.\n")
+            return
+
+        # Calculate column width
+        col_width = max(len(p1_display), len(p2_display), 10) + 2
+
+        # Print table header
+        print(f"{'Tool':<25} {p1_display:>{col_width}} {p2_display:>{col_width}}")
+        print("-" * (27 + 2 * col_width))
+
+        # Print tool usage rows
+        p1_total = 0
+        p2_total = 0
+        for tool_name in all_tool_names:
+            p1_count = p1_tools.get(tool_name, 0)
+            p2_count = p2_tools.get(tool_name, 0)
+            p1_total += p1_count
+            p2_total += p2_count
+            print(f"{tool_name:<25} {p1_count:>{col_width}} {p2_count:>{col_width}}")
+
+        # Print separator and total row
+        print("-" * (27 + 2 * col_width))
+        print(f"{'Total Tool Calls':<25} {p1_total:>{col_width}} {p2_total:>{col_width}}")
+        print()
+
     def show_star_details(self, star: Star, player: Player) -> None:
         """Display detailed information about a star.
 
@@ -1227,3 +1287,102 @@ class DisplayManager:
                     f"  Result: Rebellion crushed! {event.garrison_after} ship{'s' if event.garrison_after != 1 else ''} remaining"
                 )
         print()
+
+    def show_turn_comparison(self, game: Game) -> None:
+        """Display comparative metrics visualization between players.
+
+        Shows diverging bar charts for:
+        - Stars Controlled
+        - Production RU
+        - Total Ships (stationed + in transit)
+
+        Args:
+            game: Current game state
+        """
+        print("\n=== TURN COMPARISON ===\n")
+
+        # Calculate metrics for both players
+        p1_metrics = self._calculate_player_metrics(game, "p1")
+        p2_metrics = self._calculate_player_metrics(game, "p2")
+
+        # Display each metric comparison
+        self._show_metric_comparison("Stars Controlled", p1_metrics["stars"], p2_metrics["stars"])
+        self._show_metric_comparison(
+            "Production RU", p1_metrics["production"], p2_metrics["production"]
+        )
+        self._show_metric_comparison("Total Ships", p1_metrics["ships"], p2_metrics["ships"])
+
+        print()
+
+    def _calculate_player_metrics(self, game: Game, player_id: str) -> dict[str, int]:
+        """Calculate key metrics for a player.
+
+        Args:
+            game: Current game state
+            player_id: Player ID to calculate metrics for
+
+        Returns:
+            Dictionary with keys: "stars", "production", "ships"
+        """
+        # Count controlled stars
+        controlled_stars = [s for s in game.stars if s.owner == player_id]
+        stars_count = len(controlled_stars)
+
+        # Calculate production (base_ru already includes home star bonus)
+        production = sum(s.base_ru for s in controlled_stars)
+
+        # Calculate total ships (stationed + in transit)
+        stationed_ships = sum(s.stationed_ships.get(player_id, 0) for s in game.stars)
+        in_transit_ships = sum(f.ships for f in game.fleets if f.owner == player_id)
+        total_ships = stationed_ships + in_transit_ships
+
+        return {
+            "stars": stars_count,
+            "production": production,
+            "ships": total_ships,
+        }
+
+    def _show_metric_comparison(self, metric_name: str, p1_value: int, p2_value: int) -> None:
+        """Display a single metric as a diverging bar chart.
+
+        Shows the advantage of one player over the other:
+        - Bar extends LEFT when P1 has advantage
+        - Bar extends RIGHT when P2 has advantage
+        - Length represents magnitude of difference
+
+        Args:
+            metric_name: Name of the metric being displayed
+            p1_value: Player 1's value
+            p2_value: Player 2's value
+        """
+        bar_width = 20
+        half_width = bar_width // 2
+
+        # Calculate difference and total
+        diff = p1_value - p2_value
+        total = p1_value + p2_value
+
+        # Handle edge case where total is 0
+        if total == 0:
+            center_bar = " " * bar_width
+        else:
+            # Calculate bar length based on advantage proportion
+            # The bar shows how much one player is ahead relative to total
+            advantage_proportion = abs(diff) / total
+            bar_length = max(1, int(advantage_proportion * bar_width))
+
+            if diff > 0:
+                # P1 advantage - bar extends left from center
+                left_bar = "█" * bar_length
+                right_bar = ""
+                center_bar = f"{left_bar:>{half_width}}{right_bar:<{half_width}}"
+            elif diff < 0:
+                # P2 advantage - bar extends right from center
+                left_bar = ""
+                right_bar = "█" * bar_length
+                center_bar = f"{left_bar:>{half_width}}{right_bar:<{half_width}}"
+            else:
+                # Equal values - no bar
+                center_bar = " " * bar_width
+
+        print(f"{metric_name:<20} P1: {p1_value:>3} | {center_bar} | P2: {p2_value:<3}")

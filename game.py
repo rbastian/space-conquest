@@ -100,6 +100,9 @@ class GameOrchestrator:
                 # Post-turn: process orders, production
                 self._execute_post_turn_logic(orders)
 
+                # Show turn comparison after post-turn logic completes
+                self.display.show_turn_comparison(self.game)
+
         except KeyboardInterrupt:
             print("\n\nGame interrupted by user. Exiting...")
             sys.exit(0)
@@ -162,12 +165,19 @@ class GameOrchestrator:
 
     def _show_victory(self) -> None:
         """Display enhanced victory message."""
+        # Collect tool usage statistics from players
+        tool_usage_stats = {}
+        for player_id, player in self.players.items():
+            if hasattr(player, "get_tool_usage_stats"):
+                tool_usage_stats[player_id] = player.get_tool_usage_stats()
+
         # Use the enhanced victory screen with stored events
         self.display.show_enhanced_victory(
             self.game,
             self.last_combat_events,
             self.last_hyperspace_losses,
             self.last_rebellion_events,
+            tool_usage_stats,
         )
 
 
