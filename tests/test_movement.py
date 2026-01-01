@@ -57,7 +57,7 @@ def test_hyperspace_loss_destroys_fleet():
     initial_count = len(game.fleets)
 
     # Process movement
-    game, hyperspace_losses = process_fleet_movement(game)
+    game, hyperspace_losses, fleet_arrivals = process_fleet_movement(game)
 
     # Some fleets should be destroyed (2% loss rate)
     # With 100 fleets, we expect around 2 destroyed (but could vary)
@@ -93,7 +93,7 @@ def test_fleet_movement_decrements_distance():
     }
 
     # Process movement
-    game, hyperspace_losses = process_fleet_movement(game)
+    game, hyperspace_losses, fleet_arrivals = process_fleet_movement(game)
 
     # Check that fleet survived and distance decremented
     surviving_fleets = [f for f in game.fleets if f.id == "p1-001"]
@@ -147,7 +147,7 @@ def test_fleet_arrival_adds_ships_to_star():
     }
 
     # Process movement
-    game, hyperspace_losses = process_fleet_movement(game)
+    game, hyperspace_losses, fleet_arrivals = process_fleet_movement(game)
 
     # Fleet should have arrived
     assert len(game.fleets) == 0 or "p1-001" not in [f.id for f in game.fleets]
@@ -210,7 +210,7 @@ def test_fleet_arrival_reveals_star_ru():
     assert "B" not in player1.visited_stars
 
     # Process movement
-    game, hyperspace_losses = process_fleet_movement(game)
+    game, hyperspace_losses, fleet_arrivals = process_fleet_movement(game)
 
     # Player should now have visited star B
     assert "B" in player1.visited_stars
@@ -271,7 +271,7 @@ def test_multiple_fleets_arrive_simultaneously():
     }
 
     # Process movement
-    game, hyperspace_losses = process_fleet_movement(game)
+    game, hyperspace_losses, fleet_arrivals = process_fleet_movement(game)
 
     # Both fleets should arrive (assuming no hyperspace loss)
     # At least one should arrive
@@ -294,7 +294,7 @@ def test_no_fleets_in_transit():
     }
 
     # Process movement
-    game, hyperspace_losses = process_fleet_movement(game)
+    game, hyperspace_losses, fleet_arrivals = process_fleet_movement(game)
 
     # Should complete without error
     assert game.fleets == []
@@ -331,7 +331,7 @@ def test_hyperspace_loss_statistical():
         }
 
         # Process movement
-        game, hyperspace_losses = process_fleet_movement(game)
+        game, hyperspace_losses, fleet_arrivals = process_fleet_movement(game)
 
         # Check if fleet was destroyed
         if len(game.fleets) == 0:

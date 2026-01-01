@@ -66,12 +66,13 @@ def test_phase_movement_independent():
     )
 
     # Execute movement phase only
-    game, hyperspace_losses = executor.execute_phase_movement(game)
+    game, hyperspace_losses, fleet_arrivals = executor.execute_phase_movement(game)
 
     # Fleet should have moved
     assert len(game.fleets) == 1
     assert game.fleets[0].dist_remaining == 1
     assert len(hyperspace_losses) == 0
+    assert len(fleet_arrivals) == 0  # No arrivals yet
 
 
 def test_phase_combat_independent():

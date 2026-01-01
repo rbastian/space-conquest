@@ -92,7 +92,7 @@ def test_simultaneous_arrival_at_npc_star_both_fleets_participate():
     game.fleets = [fleet_p1, fleet_p2]
 
     # Phase 1: Fleet Movement (both fleets arrive)
-    game, hyperspace_losses = process_fleet_movement(game)
+    game, hyperspace_losses, fleet_arrivals = process_fleet_movement(game)
 
     # Verify both fleets arrived
     assert len(game.fleets) == 0, "Both fleets should have arrived"

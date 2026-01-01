@@ -53,6 +53,7 @@ class CombatEvent:
         control_before: Star owner before combat ("p1", "p2", or None for NPC/uncontrolled)
         control_after: Star owner after combat ("p1", "p2", or None)
         simultaneous: Flag for simultaneous arrival at uncontrolled star (both players arrive same turn)
+        arriving_fleets: List of (owner, origin, distance) for fleets that arrived this turn
     """
 
     star_id: str
@@ -70,6 +71,7 @@ class CombatEvent:
     control_before: str | None
     control_after: str | None
     simultaneous: bool = False
+    arriving_fleets: list[tuple[str, str, int]] | None = None
 
 
 @dataclass
@@ -293,6 +295,14 @@ def _resolve_npc_combat(game: Game, star: Star) -> CombatEvent | None:
             star.stationed_ships["p1"] = p1_survivors
             star.stationed_ships["p2"] = p2_survivors
 
+            # Track combat losses for combined attacks (distribute proportionally)
+            if p1_ships > 0:
+                p1_losses = p1_ships - p1_survivors
+                game.ships_lost_combat["p1"] += p1_losses
+            if p2_ships > 0:
+                p2_losses = p2_ships - p2_survivors
+                game.ships_lost_combat["p2"] += p2_losses
+
         # Determine ownership after NPC combat
         # If only one player has survivors, they gain control
         # If both players have survivors, star becomes unowned (PvP will decide)
@@ -311,7 +321,19 @@ def _resolve_npc_combat(game: Game, star: Star) -> CombatEvent | None:
         star.stationed_ships["p2"] = 0
         star.owner = None  # Star is NPC-controlled
 
+        # Track combat losses for combined attacks when they lose
+        if attacker_label == "combined":
+            # Both players lost all their ships
+            if p1_ships > 0:
+                game.ships_lost_combat["p1"] += p1_ships
+            if p2_ships > 0:
+                game.ships_lost_combat["p2"] += p2_ships
+
     control_after = star.owner
+
+    # Track combat losses for players (not for combined attacks as we already distributed losses)
+    if attacker_label != "combined":
+        game.ships_lost_combat[attacker_label] += result.attacker_losses
 
     # Create combat event
     return CombatEvent(
@@ -418,6 +440,10 @@ def _resolve_player_combat(game: Game, star: Star) -> CombatEvent | None:
         star.owner = None
 
     control_after = star.owner
+
+    # Track combat losses for both players
+    game.ships_lost_combat[attacker_id] += result.attacker_losses
+    game.ships_lost_combat[defender_id] += result.defender_losses
 
     # Create combat event with correct attacker/defender roles
     return CombatEvent(

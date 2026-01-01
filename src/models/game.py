@@ -53,6 +53,11 @@ class Game:
     corner_assignments: dict[str, tuple[int, int]] | None = (
         None  # Player to corner mapping (for replay analysis)
     )
+    # Game-wide statistics tracking
+    ships_produced: dict[str, int] = field(default_factory=lambda: {"p1": 0, "p2": 0})
+    ships_lost_combat: dict[str, int] = field(default_factory=lambda: {"p1": 0, "p2": 0})
+    ships_lost_hyperspace: dict[str, int] = field(default_factory=lambda: {"p1": 0, "p2": 0})
+    ships_lost_rebellion: dict[str, int] = field(default_factory=lambda: {"p1": 0, "p2": 0})
 
     def __post_init__(self):
         """Initialize RNG if not provided."""

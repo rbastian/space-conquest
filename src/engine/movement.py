@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 from ..models.fleet import Fleet
 from ..models.game import Game
+from ..utils.distance import chebyshev_distance
 
 
 @dataclass
@@ -36,7 +37,28 @@ class HyperspaceLoss:
     dest: str
 
 
-def process_fleet_movement(game: Game) -> tuple[Game, list[HyperspaceLoss]]:
+@dataclass
+class FleetArrival:
+    """Record of a fleet arrival.
+
+    Attributes:
+        fleet_id: ID of arrived fleet
+        owner: Owner of fleet
+        ships: Number of ships that arrived
+        origin: Origin star ID
+        dest: Destination star ID
+        distance: Total distance traveled
+    """
+
+    fleet_id: str
+    owner: str
+    ships: int
+    origin: str
+    dest: str
+    distance: int
+
+
+def process_fleet_movement(game: Game) -> tuple[Game, list[HyperspaceLoss], list[FleetArrival]]:
     """Execute Phase 1: Fleet Movement.
 
     1. Apply 2% hyperspace loss to each fleet in transit:
@@ -55,11 +77,13 @@ def process_fleet_movement(game: Game) -> tuple[Game, list[HyperspaceLoss]]:
         game: Current game state
 
     Returns:
-        Tuple of (updated game state with fleets moved and arrivals processed, list of hyperspace losses)
+        Tuple of (updated game state with fleets moved and arrivals processed,
+                 list of hyperspace losses, list of fleet arrivals)
     """
     surviving_fleets = []
     arriving_fleets = []
     hyperspace_losses = []
+    fleet_arrivals = []
 
     # Process each fleet
     for fleet in game.fleets:
@@ -76,6 +100,8 @@ def process_fleet_movement(game: Game) -> tuple[Game, list[HyperspaceLoss]]:
                     dest=fleet.dest,
                 )
             )
+            # Track hyperspace losses
+            game.ships_lost_hyperspace[fleet.owner] += fleet.ships
             continue
 
         # Decrement distance
@@ -87,14 +113,36 @@ def process_fleet_movement(game: Game) -> tuple[Game, list[HyperspaceLoss]]:
         else:
             surviving_fleets.append(fleet)
 
-    # Process arrivals
+    # Process arrivals and calculate distances
     for fleet in arriving_fleets:
+        # Calculate distance using star positions
+        origin_star = next((s for s in game.stars if s.id == fleet.origin), None)
+        dest_star = next((s for s in game.stars if s.id == fleet.dest), None)
+
+        if origin_star and dest_star:
+            distance = chebyshev_distance(origin_star.x, origin_star.y, dest_star.x, dest_star.y)
+        else:
+            distance = 0  # Fallback if stars not found
+
+        # Record arrival
+        fleet_arrivals.append(
+            FleetArrival(
+                fleet_id=fleet.id,
+                owner=fleet.owner,
+                ships=fleet.ships,
+                origin=fleet.origin,
+                dest=fleet.dest,
+                distance=distance,
+            )
+        )
+
+        # Process the arrival (add ships to star)
         _process_fleet_arrival(game, fleet)
 
     # Update game state
     game.fleets = surviving_fleets
 
-    return game, hyperspace_losses
+    return game, hyperspace_losses, fleet_arrivals
 
 
 def _process_fleet_arrival(game: Game, fleet: Fleet) -> None:

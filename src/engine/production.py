@@ -187,12 +187,16 @@ def _check_and_process_rebellion(game: Game, star: Star) -> RebellionEvent | Non
         star.stationed_ships[owner] = 0
         garrison_after = 0
         rebel_survivors = result.defender_survivors
+        # Track garrison losses
+        game.ships_lost_rebellion[owner] += result.attacker_losses
     elif result.winner == "attacker":
         # Garrison wins
         outcome = "defended"
         star.stationed_ships[owner] = result.attacker_survivors
         garrison_after = result.attacker_survivors
         rebel_survivors = 0
+        # Track garrison losses
+        game.ships_lost_rebellion[owner] += result.attacker_losses
     else:
         # Tie - mutual destruction, star becomes unowned
         outcome = "lost"
@@ -201,6 +205,8 @@ def _check_and_process_rebellion(game: Game, star: Star) -> RebellionEvent | Non
         star.stationed_ships[owner] = 0
         garrison_after = 0
         rebel_survivors = 0
+        # Track garrison losses (all ships lost in tie)
+        game.ships_lost_rebellion[owner] += result.attacker_losses
 
     # Create rebellion event
     return RebellionEvent(
@@ -240,3 +246,6 @@ def _process_star_production(game: Game, star: Star) -> None:
     if owner not in star.stationed_ships:
         star.stationed_ships[owner] = 0
     star.stationed_ships[owner] += production
+
+    # Track ships produced
+    game.ships_produced[owner] += production
