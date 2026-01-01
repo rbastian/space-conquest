@@ -191,4 +191,69 @@ def create_react_tools(game: Game, player_id: str) -> list:
             "current_turn": game.turn,
         }
 
-    return [validate_orders, calculate_distance]
+    @tool
+    def get_nearby_garrisons(target: str) -> dict:
+        """Find your 3 closest garrisons to a target star.
+
+        Use this to identify which of your controlled stars can send reinforcements
+        fastest to a target location. Helps answer: "Which of my bases can respond
+        to this threat/opportunity?"
+
+        Args:
+            target: Target star ID (letter like 'A' or 'K')
+
+        Returns:
+            Dictionary with target info and up to 3 closest garrisons sorted by distance
+        """
+        logger.info(f"[TOOL] get_nearby_garrisons: Finding garrisons near {target.upper()}")
+        target_id = target.upper()
+
+        # Get target star
+        target_star = _get_star_by_id(target_id)
+        if not target_star:
+            return {
+                "target": {"id": target_id, "name": "Unknown", "location": [0, 0]},
+                "garrisons": []
+            }
+
+        # Find all garrisons (owned stars with ships > 0)
+        garrisons = []
+        for star in game.stars:
+            if star.owner != player_id:
+                continue
+
+            ships = _get_available_ships(star)
+            if ships <= 0:
+                continue
+
+            # Calculate distance
+            distance_turns = chebyshev_distance(star.x, star.y, target_star.x, target_star.y)
+
+            # Check if home star
+            is_home = star.id == game.players[player_id].home_star
+
+            garrisons.append({
+                "star_id": star.id,
+                "star_name": star.name,
+                "location": [star.x, star.y],
+                "stationed_ships": ships,
+                "distance_turns": distance_turns,
+                "arrival_turn": game.turn + distance_turns,
+                "ru": star.base_ru,
+                "is_home": is_home
+            })
+
+        # Sort by distance (closest first) and take top 3
+        garrisons.sort(key=lambda g: g["distance_turns"])
+        garrisons = garrisons[:3]
+
+        return {
+            "target": {
+                "id": target_star.id,
+                "name": target_star.name,
+                "location": [target_star.x, target_star.y]
+            },
+            "garrisons": garrisons
+        }
+
+    return [validate_orders, calculate_distance, get_nearby_garrisons]

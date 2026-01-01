@@ -70,6 +70,13 @@ class ReactPlayer:
         # Per-turn state
         self.strategic_logger = None
 
+        # Tool usage tracking
+        self._tool_usage_counts: dict[str, int] = {
+            "validate_orders": 0,
+            "calculate_distance": 0,
+            "get_nearby_garrisons": 0,
+        }
+
         # Log successful initialization
         # Different LLM classes use different attribute names for model identifier
         llm_model = (
@@ -139,6 +146,14 @@ class ReactPlayer:
 
                 # Extract and log information from new AIMessages
                 self._log_iteration_messages(new_messages)
+
+                # Track tool usage from new AIMessages
+                for msg in new_messages:
+                    if isinstance(msg, AIMessage) and msg.tool_calls:
+                        for tool_call in msg.tool_calls:
+                            tool_name = tool_call.get("name")
+                            if tool_name in self._tool_usage_counts:
+                                self._tool_usage_counts[tool_name] += 1
 
                 # Check termination: loop continues until agent doesn't request more tools
                 # Find last AIMessage and check if it has tool_calls
@@ -323,7 +338,21 @@ class ReactPlayer:
         except Exception as e:
             logger.warning(f"Failed to log strategic metrics: {e}")
 
+    def get_tool_usage_stats(self) -> dict[str, int]:
+        """Return a copy of the tool usage statistics.
+
+        Returns:
+            Dictionary mapping tool names to call counts
+        """
+        return self._tool_usage_counts.copy()
+
     def close(self):
-        """Cleanup strategic logger."""
+        """Cleanup strategic logger and log tool usage statistics."""
+        # Log tool usage statistics
+        logger.info(f"Tool usage statistics for {self.player_id}:")
+        for tool_name, count in self._tool_usage_counts.items():
+            logger.info(f"  {tool_name}: {count} calls")
+
+        # Cleanup strategic logger
         if self.strategic_logger:
             self.strategic_logger.close()
