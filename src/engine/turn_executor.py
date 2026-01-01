@@ -27,7 +27,7 @@ from ..models.order import Order
 from ..models.star import Star
 from ..utils.distance import chebyshev_distance
 from .combat import CombatEvent, RebellionEvent, process_combat
-from .movement import HyperspaceLoss, process_fleet_movement
+from .movement import FleetArrival, HyperspaceLoss, process_fleet_movement
 from .production import (
     process_production,
     process_rebellions,
@@ -63,7 +63,9 @@ class TurnExecutor:
     # Each method handles ONE phase and returns updated game state + events
     # =========================================================================
 
-    def execute_phase_movement(self, game: Game) -> tuple[Game, list[HyperspaceLoss]]:
+    def execute_phase_movement(
+        self, game: Game
+    ) -> tuple[Game, list[HyperspaceLoss], list[FleetArrival]]:
         """Execute Phase 1: Fleet Movement.
 
         All fleets move one step toward their destination. Fleets that have
@@ -74,9 +76,9 @@ class TurnExecutor:
             game: Current game state
 
         Returns:
-            Tuple of (updated game state, hyperspace loss events)
+            Tuple of (updated game state, hyperspace loss events, fleet arrivals)
         """
-        game, hyperspace_losses = process_fleet_movement(game)
+        game, hyperspace_losses, fleet_arrivals = process_fleet_movement(game)
 
         # Store hyperspace losses in game state for observation
         game.hyperspace_losses_last_turn = [
@@ -90,9 +92,11 @@ class TurnExecutor:
             for loss in hyperspace_losses
         ]
 
-        return game, hyperspace_losses
+        return game, hyperspace_losses, fleet_arrivals
 
-    def execute_phase_combat(self, game: Game) -> tuple[Game, list[CombatEvent]]:
+    def execute_phase_combat(
+        self, game: Game, fleet_arrivals: list[FleetArrival] | None = None
+    ) -> tuple[Game, list[CombatEvent]]:
         """Execute Phase 2: Combat Resolution.
 
         Resolve all combats at stars where multiple players have ships.
@@ -100,11 +104,28 @@ class TurnExecutor:
 
         Args:
             game: Current game state
+            fleet_arrivals: Optional list of fleet arrivals from this turn
 
         Returns:
             Tuple of (updated game state, combat events)
         """
         game, combat_events = process_combat(game)
+
+        # Attach arrival information to combat events
+        if fleet_arrivals:
+            # Group arrivals by destination star
+            arrivals_by_star: dict[str, list[tuple[str, str, int]]] = {}
+            for arrival in fleet_arrivals:
+                if arrival.dest not in arrivals_by_star:
+                    arrivals_by_star[arrival.dest] = []
+                arrivals_by_star[arrival.dest].append(
+                    (arrival.owner, arrival.origin, arrival.distance)
+                )
+
+            # Attach to combat events
+            for event in combat_events:
+                if event.star_id in arrivals_by_star:
+                    event.arriving_fleets = arrivals_by_star[event.star_id]
 
         # Store combat events in game state for observation
         # IMPORTANT: Store BEFORE victory check so final turn combats are visible
@@ -125,6 +146,7 @@ class TurnExecutor:
                 "control_before": event.control_before,
                 "control_after": event.control_after,
                 "simultaneous": event.simultaneous,
+                "arriving_fleets": event.arriving_fleets,
             }
             for event in combat_events
         ]
@@ -239,10 +261,10 @@ class TurnExecutor:
             If game.winner is set, the game has ended
         """
         # Movement
-        game, hyperspace_losses = self._move_fleets(game)
+        game, hyperspace_losses, fleet_arrivals = self._move_fleets(game)
 
-        # Combat
-        game, combat_events = self._resolve_combat(game)
+        # Combat (with arrival info)
+        game, combat_events = self._resolve_combat(game, fleet_arrivals)
 
         # Rebellions
         game, rebellion_events = self._process_rebellions(game)
@@ -280,13 +302,15 @@ class TurnExecutor:
     # These delegate to the existing phase methods
     # =========================================================================
 
-    def _move_fleets(self, game: Game) -> tuple[Game, list[HyperspaceLoss]]:
+    def _move_fleets(self, game: Game) -> tuple[Game, list[HyperspaceLoss], list[FleetArrival]]:
         """Execute fleet movement."""
         return self.execute_phase_movement(game)
 
-    def _resolve_combat(self, game: Game) -> tuple[Game, list[CombatEvent]]:
+    def _resolve_combat(
+        self, game: Game, fleet_arrivals: list[FleetArrival] | None = None
+    ) -> tuple[Game, list[CombatEvent]]:
         """Resolve combat at all stars."""
-        return self.execute_phase_combat(game)
+        return self.execute_phase_combat(game, fleet_arrivals)
 
     def _process_rebellions(self, game: Game) -> tuple[Game, list[RebellionEvent]]:
         """Process rebellions at under-garrisoned stars."""
@@ -334,10 +358,10 @@ class TurnExecutor:
             Note: If game.winner is set, the game has ended
         """
         # Phase 1: Fleet Movement
-        game, hyperspace_losses = self.execute_phase_movement(game)
+        game, hyperspace_losses, fleet_arrivals = self.execute_phase_movement(game)
 
-        # Phase 2: Combat Resolution
-        game, combat_events = self.execute_phase_combat(game)
+        # Phase 2: Combat Resolution (with arrival info)
+        game, combat_events = self.execute_phase_combat(game, fleet_arrivals)
 
         # Phase 3: Rebellion Resolution
         game, rebellion_events = self.execute_phase_rebellions(game)
@@ -415,7 +439,7 @@ class TurnExecutor:
         Returns:
             Tuple of (updated game state, combat events, hyperspace losses)
         """
-        game, combat_events, hyperspace_losses, _ = self.execute_phases_1_to_4(game)
+        game, combat_events, hyperspace_losses, _ = self.execute_pre_turn_logic(game)
         return game, combat_events, hyperspace_losses
 
     def execute_phases_4_to_5(

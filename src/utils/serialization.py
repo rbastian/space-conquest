@@ -92,6 +92,10 @@ def _serialize_game(game: Game) -> dict[str, Any]:
         "turn_history": game.turn_history,
         "fleet_counter": game.fleet_counter,
         "rng_state": game.rng.get_state(),  # Save RNG state for determinism
+        "ships_produced": game.ships_produced,
+        "ships_lost_combat": game.ships_lost_combat,
+        "ships_lost_hyperspace": game.ships_lost_hyperspace,
+        "ships_lost_rebellion": game.ships_lost_rebellion,
     }
 
 
@@ -126,6 +130,10 @@ def _deserialize_game(data: dict[str, Any]) -> Game:
         winner=data.get("winner"),
         turn_history=data.get("turn_history", []),
         fleet_counter=data.get("fleet_counter", {"p1": 0, "p2": 0}),
+        ships_produced=data.get("ships_produced", {"p1": 0, "p2": 0}),
+        ships_lost_combat=data.get("ships_lost_combat", {"p1": 0, "p2": 0}),
+        ships_lost_hyperspace=data.get("ships_lost_hyperspace", {"p1": 0, "p2": 0}),
+        ships_lost_rebellion=data.get("ships_lost_rebellion", {"p1": 0, "p2": 0}),
     )
 
     return game

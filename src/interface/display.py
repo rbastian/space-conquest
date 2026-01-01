@@ -481,7 +481,7 @@ class DisplayManager:
             p1_name = self._get_display_name("p1", game)
             p2_name = self._get_display_name("p2", game)
             print(
-                f"{p1_name} and {p2_name} captured their opponent's home star in a simultaneous strike."
+                f"{p1_name} (p1) and {p2_name} (p2) captured their opponent's home star in a simultaneous strike."
             )
             print("History will remember this as a legendary stalemate.\n")
         elif game.winner in ("p1", "p2"):
@@ -497,7 +497,9 @@ class DisplayManager:
                     captured_star = star
                     break
 
-            print(f"{winner_name} achieves DECISIVE VICTORY over {loser_name}!")
+            print(
+                f"{winner_name} ({game.winner}) achieves DECISIVE VICTORY over {loser_name} ({loser})!"
+            )
             if captured_star:
                 print(f"The assault on {captured_star.name} ({loser_home}) succeeded—")
                 print("the enemy empire has fallen.\n")
@@ -551,11 +553,16 @@ class DisplayManager:
                 if event.combat_type == "pvp":
                     attacker_name = self._get_display_name(event.attacker, game)
                     defender_name = self._get_display_name(event.defender, game)
+                    winner_text = (
+                        attacker_name
+                        if event.winner == "attacker"
+                        else (defender_name if event.winner == "defender" else "tie")
+                    )
                     print(
                         f"  {REPORT_EMOJIS['combat']} {event.star_id} ({event.star_name}): "
-                        f"{attacker_name} {event.attacker_ships} vs "
-                        f"{defender_name} {event.defender_ships} "
-                        f"-> {attacker_name if event.winner == 'attacker' else (defender_name if event.winner == 'defender' else 'tie')} wins"
+                        f"{attacker_name} ({event.attacker}) {event.attacker_ships} vs "
+                        f"{defender_name} ({event.defender}) {event.defender_ships} "
+                        f"-> {winner_text} wins"
                     )
                 else:
                     attacker_label = (
@@ -563,9 +570,12 @@ class DisplayManager:
                         if event.attacker == "combined"
                         else self._get_display_name(event.attacker, game)
                     )
+                    attacker_id_label = (
+                        "(p1+p2)" if event.attacker == "combined" else f"({event.attacker})"
+                    )
                     print(
                         f"  {REPORT_EMOJIS['combat']} {event.star_id} ({event.star_name}): "
-                        f"{attacker_label} {event.attacker_ships} vs "
+                        f"{attacker_label} {attacker_id_label} {event.attacker_ships} vs "
                         f"NPC {event.defender_ships} "
                         f"-> {attacker_label if event.winner == 'attacker' else 'NPC'} wins"
                     )
@@ -605,8 +615,24 @@ class DisplayManager:
         if event.combat_type == "pvp":
             attacker_name = self._get_display_name(event.attacker, game)
             defender_name = self._get_display_name(event.defender, game)
-            print(f"  Attacker: {attacker_name} with {event.attacker_ships} ships")
-            print(f"  Defender: {defender_name} with {event.defender_ships} ships")
+
+            # Format attacker line with origin/distance if available
+            attacker_line = (
+                f"  Attacker: {attacker_name} ({event.attacker}) with {event.attacker_ships} ships"
+            )
+            if event.arriving_fleets:
+                # Find attacker's arrival info
+                attacker_arrival = next(
+                    (arr for arr in event.arriving_fleets if arr[0] == event.attacker), None
+                )
+                if attacker_arrival:
+                    origin, distance = attacker_arrival[1], attacker_arrival[2]
+                    attacker_line += f" (from {origin}, {distance} ly)"
+            print(attacker_line)
+
+            print(
+                f"  Defender: {defender_name} ({event.defender}) with {event.defender_ships} ships"
+            )
             print(
                 f"  Result: {attacker_name} {event.attacker_losses} casualties, "
                 f"{defender_name} {event.defender_losses} casualties"
@@ -682,10 +708,14 @@ class DisplayManager:
             print("Final Turn Production:")
             if p1_production > 0:
                 p1_name = self._get_display_name("p1", game)
-                print(f"  {REPORT_EMOJIS['production']} {p1_name}: {p1_production} ships produced")
+                print(
+                    f"  {REPORT_EMOJIS['production']} {p1_name} (p1): {p1_production} ships produced"
+                )
             if p2_production > 0:
                 p2_name = self._get_display_name("p2", game)
-                print(f"  {REPORT_EMOJIS['production']} {p2_name}: {p2_production} ships produced")
+                print(
+                    f"  {REPORT_EMOJIS['production']} {p2_name} (p2): {p2_production} ships produced"
+                )
             print()
 
     def _show_final_map(self, game: Game) -> None:
@@ -721,8 +751,8 @@ class DisplayManager:
         p1_name = self._get_display_name("p1", game)
         p2_name = self._get_display_name("p2", game)
         print("\nLegend:")
-        print(f"  @X = {p1_name} controlled star")
-        print(f"  #X = {p2_name} controlled star")
+        print(f"  @X = {p1_name} (p1) controlled star")
+        print(f"  #X = {p2_name} (p2) controlled star")
         print("  NX = NPC/unowned star (N = RU value)")
         print("  .. = empty space")
 
@@ -730,8 +760,8 @@ class DisplayManager:
         p1_stars = [s for s in game.stars if s.owner == "p1"]
         p2_stars = [s for s in game.stars if s.owner == "p2"]
 
-        print(f"\n{p1_name} controls: {', '.join(s.id for s in p1_stars) or 'none'}")
-        print(f"{p2_name} controls: {', '.join(s.id for s in p2_stars) or 'none'}")
+        print(f"\n{p1_name} (p1) controls: {', '.join(s.id for s in p1_stars) or 'none'}")
+        print(f"{p2_name} (p2) controls: {', '.join(s.id for s in p2_stars) or 'none'}")
         print()
 
     def _show_statistics_table(self, game: Game) -> None:
@@ -794,6 +824,32 @@ class DisplayManager:
         )
         print(
             f"{'Total Fleet Strength':<25} {stats['p1']['total_fleet']:>{col_width}} {stats['p2']['total_fleet']:>{col_width}}"
+        )
+
+        # Add statistics section
+        p1_produced = game.ships_produced.get("p1", 0)
+        p2_produced = game.ships_produced.get("p2", 0)
+        p1_combat_losses = game.ships_lost_combat.get("p1", 0)
+        p2_combat_losses = game.ships_lost_combat.get("p2", 0)
+        p1_hyperspace_losses = game.ships_lost_hyperspace.get("p1", 0)
+        p2_hyperspace_losses = game.ships_lost_hyperspace.get("p2", 0)
+        p1_rebellion_losses = game.ships_lost_rebellion.get("p1", 0)
+        p2_rebellion_losses = game.ships_lost_rebellion.get("p2", 0)
+        p1_total_losses = p1_combat_losses + p1_hyperspace_losses + p1_rebellion_losses
+        p2_total_losses = p2_combat_losses + p2_hyperspace_losses + p2_rebellion_losses
+
+        print(f"{'Ships Produced':<25} {p1_produced:>{col_width}} {p2_produced:>{col_width}}")
+        print(
+            f"{'Ships Lost (Combat)':<25} {p1_combat_losses:>{col_width}} {p2_combat_losses:>{col_width}}"
+        )
+        print(
+            f"{'Ships Lost (Hyperspace)':<25} {p1_hyperspace_losses:>{col_width}} {p2_hyperspace_losses:>{col_width}}"
+        )
+        print(
+            f"{'Ships Lost (Rebellions)':<25} {p1_rebellion_losses:>{col_width}} {p2_rebellion_losses:>{col_width}}"
+        )
+        print(
+            f"{'Total Ships Lost':<25} {p1_total_losses:>{col_width}} {p2_total_losses:>{col_width}}"
         )
         print()
 
