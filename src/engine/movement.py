@@ -1,7 +1,7 @@
 """Phase 1: Fleet movement and hyperspace loss.
 
 This module handles:
-1. Hyperspace loss (2% chance per fleet per turn)
+1. Hyperspace loss (n log n scaling - longer journeys are riskier)
 2. Fleet movement (decrement dist_remaining)
 3. Fleet arrivals (dist_remaining == 0)
 4. Fog-of-war reveal (star RU reveal to arriving player)
@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 from ..models.fleet import Fleet
 from ..models.game import Game
+from ..utils.constants import calculate_hyperspace_per_turn_risk
 from ..utils.distance import chebyshev_distance
 
 
@@ -61,10 +62,12 @@ class FleetArrival:
 def process_fleet_movement(game: Game) -> tuple[Game, list[HyperspaceLoss], list[FleetArrival]]:
     """Execute Phase 1: Fleet Movement.
 
-    1. Apply 2% hyperspace loss to each fleet in transit:
-       - Roll d50 for each fleet (once per fleet, not per ship)
-       - On roll of 1: entire fleet is destroyed
-       - On roll of 2-50: fleet continues with all ships intact
+    1. Apply n log n hyperspace loss to each fleet in transit:
+       - Calculate total journey distance from origin to destination
+       - Determine per-turn risk using n log n scaling: risk = k × d × log(d)
+       - Roll random float [0,1) against per-turn risk
+       - If roll < risk: entire fleet is destroyed
+       - Otherwise: fleet continues with all ships intact
     2. Decrement dist_remaining for surviving fleets
     3. Process arrivals (dist_remaining == 0):
        - Add arriving fleet ships to star.stationed_ships[owner]
@@ -87,9 +90,24 @@ def process_fleet_movement(game: Game) -> tuple[Game, list[HyperspaceLoss], list
 
     # Process each fleet
     for fleet in game.fleets:
-        # Apply hyperspace loss (2% = d50 roll of 1)
-        roll = game.rng.randint(1, 50)
-        if roll == 1:
+        # Calculate total journey distance for n log n risk calculation
+        origin_star = next((s for s in game.stars if s.id == fleet.origin), None)
+        dest_star = next((s for s in game.stars if s.id == fleet.dest), None)
+
+        if origin_star and dest_star:
+            total_distance = chebyshev_distance(
+                origin_star.x, origin_star.y, dest_star.x, dest_star.y
+            )
+        else:
+            # Fallback: estimate from dist_remaining (shouldn't happen)
+            total_distance = fleet.dist_remaining
+
+        # Get per-turn risk using n log n scaling
+        per_turn_risk = calculate_hyperspace_per_turn_risk(total_distance)
+
+        # Roll against per-turn probability
+        roll = game.rng.random()  # Random float [0, 1)
+        if roll < per_turn_risk:
             # Fleet is destroyed - record the loss
             hyperspace_losses.append(
                 HyperspaceLoss(

@@ -10,7 +10,7 @@ from langchain.tools import tool
 
 from ..models.game import Game
 from ..models.star import Star
-from ..utils.constants import HYPERSPACE_LOSS_PROB
+from ..utils.constants import calculate_hyperspace_cumulative_risk
 from ..utils.distance import chebyshev_distance
 
 logger = logging.getLogger(__name__)
@@ -185,11 +185,11 @@ def create_react_tools(game: Game, player_id: str) -> list:
         # Arrival turn is current turn + distance
         arrival_turn = game.turn + distance_turns
 
-        # Calculate hyperspace survival probability
-        # Each turn has 2% chance of fleet destruction (binary outcome)
-        # Survival probability = (survival_rate)^distance
-        survival_rate = 1 - HYPERSPACE_LOSS_PROB
-        hyperspace_survival_prob = survival_rate**distance_turns
+        # Calculate hyperspace survival probability using n log n scaling
+        # Cumulative risk = k × distance × log(distance)
+        # Survival probability = 1 - cumulative_risk
+        cumulative_risk = calculate_hyperspace_cumulative_risk(distance_turns)
+        hyperspace_survival_prob = 1.0 - cumulative_risk
 
         result = {
             "from": from_star_id,

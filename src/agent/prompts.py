@@ -23,7 +23,7 @@ VICTORY CONDITIONS:
 CORE RULES (IMMUTABLE):
 - Production: Each star you control automatically produces ships each turn equal to its RU (Home=4 RU; NPC=1–3 RU). Production is automatic - no garrison required.
 - Ships move on an 8-direction grid (Chebyshev metric). Diagonals cost the same as orthogonal.
-- Hyperspace risk: each turn of travel has a 2% chance of destroying the entire fleet (binary outcome).
+- Hyperspace risk: Longer journeys are DISPROPORTIONATELY riskier (n log n scaling). Total cumulative risk = 2% × distance × log₂(distance). Examples: 1 turn = 2%, 4 turns = 16%, 8 turns = 33%, 12 turns = 60%. This is a BINARY outcome - the fleet either arrives intact or is completely destroyed. IMPORTANT: Splitting a long journey into waypoint stops REDUCES risk (e.g., two 4-turn hops = 30% total risk vs one 8-turn journey = 33% risk).
 - Fleets in hyperspace CANNOT be recalled: Once a fleet departs, it will arrive at its destination (or be destroyed by hyperspace). You cannot change its destination or return it to origin.
 - Combat: (N+1) attackers beats N defenders. Attacker loses ceil(N/2), winner takes the star.
 - NPC stars start with defenders equal to RU (1 RU = 1 defender, 2 RU = 2 defenders, 3 RU = 3 defenders).

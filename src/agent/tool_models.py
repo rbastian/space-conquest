@@ -171,7 +171,7 @@ TOOL_REGISTRY = {
     "calculate_distance": {
         "input_model": CalculateDistanceInput,
         "output_model": CalculateDistanceOutput,
-        "description": "Calculate travel distance, arrival time, and hyperspace risk between two stars. Given two star IDs, returns the distance in turns, the turn when a fleet would arrive if ordered now, and the cumulative probability of losing the entire fleet to hyperspace (2% per turn of travel). Essential for evaluating whether long-distance attacks are worth the risk. Works for any valid star IDs, regardless of ownership or fog-of-war.",
+        "description": "Calculate travel distance, arrival time, and hyperspace risk between two stars. Given two star IDs, returns the distance in turns, the turn when a fleet would arrive if ordered now, and the cumulative probability of losing the entire fleet to hyperspace (n log n scaling: 2% × distance × log₂(distance)). Longer journeys are disproportionately riskier. Essential for evaluating whether long-distance attacks are worth the risk and whether waypoint stops would reduce risk. Works for any valid star IDs, regardless of ownership or fog-of-war.",
         "input_schema": {
             "type": "object",
             "properties": {

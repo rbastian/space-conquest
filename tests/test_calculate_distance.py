@@ -73,8 +73,8 @@ def test_calculate_distance_horizontal(test_game):
     assert result["distance_turns"] == 3
     assert result["current_turn"] == 10
     assert result["arrival_turn"] == 13  # turn 10 + 3
-    # 3 turns: 1 - (0.98)^3 = 0.0588 = 5.88%
-    assert abs(result["hyperspace_loss_probability"] - 0.0588) < 0.001
+    # 3 turns (n log n): 0.02 × 3 × log₂(3) = 0.0951 = 9.51%
+    assert abs(result["hyperspace_loss_probability"] - 0.0951) < 0.001
 
 
 def test_calculate_distance_vertical(test_game):
@@ -224,21 +224,21 @@ def test_calculate_distance_different_turn_numbers(test_game):
 
 
 def test_calculate_distance_hyperspace_loss_probability(test_game):
-    """Test hyperspace loss probability calculation."""
+    """Test hyperspace loss probability calculation with n log n scaling."""
     tools = AgentTools(test_game, player_id="p1")
 
     # 0 turns: 0% loss
     result0 = tools.calculate_distance("A", "A")
     assert result0["hyperspace_loss_probability"] == 0.0
 
-    # 3 turns: 1 - (0.98)^3 = 5.88%
+    # 3 turns: 0.02 × 3 × log₂(3) = 0.02 × 3 × 1.585 = 9.51%
     result3 = tools.calculate_distance("A", "B")
-    assert abs(result3["hyperspace_loss_probability"] - 0.0588) < 0.001
+    assert abs(result3["hyperspace_loss_probability"] - 0.0951) < 0.001
 
-    # 5 turns: 1 - (0.98)^5 = 9.61%
+    # 5 turns: 0.02 × 5 × log₂(5) = 0.02 × 5 × 2.322 = 23.22%
     result5 = tools.calculate_distance("A", "D")
-    assert abs(result5["hyperspace_loss_probability"] - 0.0961) < 0.001
+    assert abs(result5["hyperspace_loss_probability"] - 0.2322) < 0.001
 
-    # Test that longer distances have higher loss probability
+    # Test that longer distances have higher loss probability (n log n scaling)
     assert result5["hyperspace_loss_probability"] > result3["hyperspace_loss_probability"]
     assert result3["hyperspace_loss_probability"] > result0["hyperspace_loss_probability"]
