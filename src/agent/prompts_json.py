@@ -16,7 +16,7 @@ def format_game_state_prompt_json(game, player_id: str) -> str:
     Returns:
         JSON string with complete game state
     """
-    from ..utils.constants import HYPERSPACE_LOSS_PROB
+    from ..utils.constants import calculate_hyperspace_cumulative_risk
     from ..utils.distance import chebyshev_distance
 
     player = game.players[player_id]
@@ -156,8 +156,7 @@ def format_game_state_prompt_json(game, player_id: str) -> str:
             ships = star.stationed_ships.get(opponent_id, 0)
             dist = chebyshev_distance(home_star.x, home_star.y, star.x, star.y)
 
-            hyperspace_survival_prob = (1 - HYPERSPACE_LOSS_PROB) ** dist
-            hyperspace_loss_prob = (1 - hyperspace_survival_prob) * 100
+            hyperspace_loss_prob = calculate_hyperspace_cumulative_risk(dist) * 100
 
             # Determine threat level
             if dist <= 3:

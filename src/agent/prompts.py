@@ -23,13 +23,20 @@ VICTORY CONDITIONS:
 CORE RULES (IMMUTABLE):
 - Production: Each star you control automatically produces ships each turn equal to its RU (Home=4 RU; NPC=1–3 RU). Production is automatic - no garrison required.
 - Ships move on an 8-direction grid (Chebyshev metric). Diagonals cost the same as orthogonal.
-- Hyperspace risk: each turn of travel has a 2% chance of destroying the entire fleet (binary outcome).
+- Hyperspace risk: Longer journeys are DISPROPORTIONATELY riskier (n log n scaling). Total cumulative risk = 2% × distance × log₂(distance). Examples: 1 turn = 2%, 4 turns = 16%, 8 turns = 33%, 12 turns = 60%. This is a BINARY outcome - the fleet either arrives intact or is completely destroyed. IMPORTANT: Splitting a long journey into waypoint stops REDUCES risk (e.g., two 4-turn hops = 30% total risk vs one 8-turn journey = 33% risk).
 - Fleets in hyperspace CANNOT be recalled: Once a fleet departs, it will arrive at its destination (or be destroyed by hyperspace). You cannot change its destination or return it to origin.
 - Combat: (N+1) attackers beats N defenders. Attacker loses ceil(N/2), winner takes the star.
 - NPC stars start with defenders equal to RU (1 RU = 1 defender, 2 RU = 2 defenders, 3 RU = 3 defenders).
 - Combat is simultaneous: fleets arriving on the same turn fight that turn.
 - Rebellion: ONLY captured NPC stars with garrison < RU risk rebellion (50% chance each turn). To prevent rebellion, keep garrison >= RU (1 RU star needs 1+ ships, 2 RU needs 2+, 3 RU needs 3+). Home stars NEVER rebel.
 - Fog-of-war: you only know RU for stars you control/captured; unknown stars may show known_ru: null. Never invent hidden info.
+
+MAP LAYOUT:
+- 12×10 grid with x-coordinates {0..11} horizontal (west to east) and y-coordinates {0..9} vertical (north to south)
+- 18 total stars (2 home stars + 16 NPC stars)
+- Player home stars start in opposite corners (Northwest and Southeast)
+- Maximum distance: 11 parsecs (corner to corner)
+- Typical cross-map journey: 8-11 turns (33-76% hyperspace loss)
 
 GAME MECHANICS - TURNS AND MOVEMENT:
 - A "turn" is one complete game cycle where all players submit orders and all game phases execute.

@@ -298,13 +298,11 @@ class AgentTools:
         # Calculate arrival turn (current turn + distance)
         arrival = self.game.turn + distance
 
-        # Calculate hyperspace loss probability
-        # Each turn has 2% chance of fleet destruction (binary outcome)
-        # Cumulative loss = 1 - (survival_rate)^distance
-        from ..utils.constants import HYPERSPACE_LOSS_PROB
+        # Calculate hyperspace loss probability using n log n scaling
+        # Cumulative risk = k × distance × log(distance)
+        from ..utils.constants import calculate_hyperspace_cumulative_risk
 
-        survival_rate = 1 - HYPERSPACE_LOSS_PROB
-        hyperspace_loss_prob = 1 - (survival_rate**distance)
+        hyperspace_loss_prob = calculate_hyperspace_cumulative_risk(distance)
 
         return {
             "from_star": from_star_obj.id,

@@ -304,7 +304,7 @@ Examples:
         "--p2-agent",
         choices=["langgraph", "react"],
         default=None,
-        help="Player 2 agent type for lvl mode (overrides --agent for p2). Defaults to --agent if not specified.",
+        help="Player 2 agent type for hvl and lvl modes (overrides --agent for p2). Defaults to --agent if not specified.",
     )
     parser.add_argument(
         "--p1-model",
@@ -321,7 +321,7 @@ Examples:
 
     args = parser.parse_args()
 
-    # Apply defaults for per-player settings in lvl mode
+    # Apply defaults for per-player settings in lvl and hvl modes
     if args.mode == "lvl":
         if args.p1_agent is None:
             args.p1_agent = args.agent
@@ -331,6 +331,13 @@ Examples:
             args.p1_model = args.model
         if args.p2_model is None:
             args.p2_model = args.model
+    elif args.mode == "hvl":
+        # In hvl mode, allow --p2-agent to override --agent for player 2
+        if args.p2_agent is None:
+            args.p2_agent = args.agent
+        else:
+            # If p2_agent is explicitly set, use it
+            pass
 
     # Configure logging to display LLM reasoning and tool use
     # This shows all the LLM's thinking when verbose=True in LangGraphPlayer
@@ -384,8 +391,9 @@ Examples:
             p2 = HumanPlayer("p2")
     elif args.mode == "hvl":
         model_display = args.model or f"{args.provider} default"
+        agent_display = args.p2_agent  # Use p2_agent (which defaults to args.agent)
         print(
-            f"Initializing Human vs LLM game ({args.provider} provider, model: {model_display})..."
+            f"Initializing Human vs LLM game ({args.provider} provider, model: {model_display}, agent: {agent_display})..."
         )
         if args.tui:
             from src.interface.tui_player import TUIPlayer
@@ -394,7 +402,7 @@ Examples:
         else:
             p1 = HumanPlayer("p1")
         try:
-            if args.agent == "langgraph":
+            if args.p2_agent == "langgraph":
                 # LangGraphPlayer with dependency injection pattern
                 llm = create_llm_for_agent(
                     args.provider,
@@ -457,7 +465,7 @@ Examples:
         except Exception as e:
             print(f"Warning: Could not initialize {args.provider} client: {e}")
             print(f"Error details: {e}")
-            if args.agent == "langgraph":
+            if args.p2_agent == "langgraph":
                 print("Falling back to mock LLM player (for testing only)")
                 p2 = LangGraphPlayer("p2", use_mock=True, verbose=args.debug)
             else:

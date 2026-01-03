@@ -171,9 +171,18 @@ class TestReactTools:
         survival_percentage = int(survival_prob[:-1])
         assert 0 <= survival_percentage <= 100
 
-        # Verify calculation: survival_rate = (0.98)^distance_turns
+        # Verify calculation with n log n formula
         distance = result["distance_turns"]
-        expected_survival_rate = 0.98**distance
+        if distance == 0:
+            expected_loss = 0.0
+        elif distance == 1:
+            expected_loss = 0.02  # Special case: 2%
+        else:
+            import math
+
+            expected_loss = 0.02 * distance * math.log2(distance)
+            expected_loss = min(expected_loss, 0.99)  # Cap at 99%
+        expected_survival_rate = 1.0 - expected_loss
         expected_percentage = round(expected_survival_rate * 100)
 
         assert survival_percentage == expected_percentage, (
@@ -181,18 +190,18 @@ class TestReactTools:
         )
 
     def test_calculate_distance_survival_probability_examples(self, game, tools):
-        """Test hyperspace survival probability with known distance examples."""
+        """Test hyperspace survival probability with known distance examples (n log n scaling)."""
         distance_tool = tools[1]
 
         # Create test stars at known positions to get specific distances
-        # We'll test by creating stars and checking the formula
+        # We'll test by creating stars and checking the n log n formula
         test_cases = [
             # (distance_turns, expected_percentage)
-            (0, 100),  # 0 turns: 0.98^0 = 1.00 → 100%
-            (3, 94),  # 3 turns: 0.98^3 = 0.9412 → 94%
-            (5, 90),  # 5 turns: 0.98^5 = 0.9039 → 90%
-            (10, 82),  # 10 turns: 0.98^10 = 0.8171 → 82%
-            (35, 49),  # 35 turns: 0.98^35 = 0.4890 → 49%
+            (0, 100),  # 0 turns: 0% loss → 100% survival
+            (3, 90),  # 3 turns: 9.51% loss → 90% survival
+            (5, 77),  # 5 turns: 23.22% loss → 77% survival
+            (10, 34),  # 10 turns: 66.44% loss → 34% survival
+            (35, 1),  # 35 turns: 99% loss (capped) → 1% survival
         ]
 
         # Find or create star pairs at specific distances
@@ -253,12 +262,12 @@ class TestReactTools:
                 test_star2.x, test_star2.y = orig_x2, orig_y2
 
     def test_calculate_distance_survival_rounding(self, game, tools):
-        """Test hyperspace survival probability rounding behavior."""
+        """Test hyperspace survival probability rounding behavior (n log n scaling)."""
         distance_tool = tools[1]
 
-        # Test rounding: 0.98^X should round correctly
-        # 0.9039 → 90% (rounds down from 90.39)
-        # 0.9051 → 91% (rounds up from 90.51)
+        # Test rounding with n log n formula
+        # 5 turns: loss = 23.22%, survival = 76.78% → rounds to 77%
+        # 4 turns: loss = 16%, survival = 84% → rounds to 84%
 
         test_star1 = game.stars[0]
         test_star2 = game.stars[1]
@@ -266,7 +275,7 @@ class TestReactTools:
         # Save original positions
         orig_x, orig_y = test_star2.x, test_star2.y
 
-        # Test distance that produces 0.9039 (5 turns → 90%)
+        # Test distance 5: 0.02 × 5 × log₂(5) = 23.22% loss → 77% survival
         test_star1.x = 0
         test_star1.y = 0
         test_star2.x = 5
@@ -275,17 +284,16 @@ class TestReactTools:
         result = distance_tool.invoke({"from_star": test_star1.id, "to_star": test_star2.id})
 
         survival_prob = result["hyperspace_survival_probability"]
-        assert survival_prob == "90%", f"Expected 90%, got {survival_prob}"
+        assert survival_prob == "77%", f"Expected 77%, got {survival_prob}"
 
-        # Test distance that produces 0.9227 (4 turns → 92%)
+        # Test distance 4: 0.02 × 4 × log₂(4) = 16% loss → 84% survival
         test_star2.x = 4
         test_star2.y = 0
 
         result = distance_tool.invoke({"from_star": test_star1.id, "to_star": test_star2.id})
 
         survival_prob = result["hyperspace_survival_probability"]
-        # 0.98^4 = 0.92236816 → rounds to 92%
-        assert survival_prob == "92%", f"Expected 92%, got {survival_prob}"
+        assert survival_prob == "84%", f"Expected 84%, got {survival_prob}"
 
         # Restore original position
         test_star2.x, test_star2.y = orig_x, orig_y
