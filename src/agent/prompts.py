@@ -31,6 +31,13 @@ CORE RULES (IMMUTABLE):
 - Rebellion: ONLY captured NPC stars with garrison < RU risk rebellion (50% chance each turn). To prevent rebellion, keep garrison >= RU (1 RU star needs 1+ ships, 2 RU needs 2+, 3 RU needs 3+). Home stars NEVER rebel.
 - Fog-of-war: you only know RU for stars you control/captured; unknown stars may show known_ru: null. Never invent hidden info.
 
+MAP LAYOUT:
+- 12×10 grid with x-coordinates {0..11} horizontal (west to east) and y-coordinates {0..9} vertical (north to south)
+- 18 total stars (2 home stars + 16 NPC stars)
+- Player home stars start in opposite corners (Northwest and Southeast)
+- Maximum distance: 11 parsecs (corner to corner)
+- Typical cross-map journey: 8-11 turns (33-76% hyperspace loss)
+
 GAME MECHANICS - TURNS AND MOVEMENT:
 - A "turn" is one complete game cycle where all players submit orders and all game phases execute.
 - Ships travel at 1 parsec per turn (movement rate = 1).
