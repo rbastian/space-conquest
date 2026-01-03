@@ -6,7 +6,10 @@ from dataclasses import dataclass, field
 
 from fastapi import WebSocket
 
-from ..agent.langgraph_player import LangGraphPlayer
+from ..agent.llm_factory import LLMFactory
+from ..agent.prompts import get_system_prompt
+from ..agent.react_player import ReactPlayer
+from ..agent.react_tools import create_react_tools
 from ..engine.map_generator import generate_map
 from ..engine.turn_executor import TurnExecutor
 from ..models.game import Game
@@ -26,7 +29,7 @@ class GameSession:
     id: str
     game: Game
     executor: TurnExecutor
-    ai_player: LangGraphPlayer
+    ai_player: ReactPlayer
     human_player_id: str  # "p1" or "p2"
     connections: list[WebSocket] = field(default_factory=list)
     phase: str = "AWAITING_ORDERS"  # "AWAITING_ORDERS" | "AI_THINKING" | "EXECUTING"
@@ -380,14 +383,45 @@ class GameSessionManager:
 
         game = generate_map(seed=seed)
 
-        # Initialize AI player
-        ai_player = LangGraphPlayer(
+        # Initialize AI player with dependency injection
+        # Create LLM
+        factory = LLMFactory(region="us-east-1")
+        if ai_provider == "bedrock":
+            llm = factory.create_bedrock_llm(
+                model=ai_model,
+                temperature=0.7,
+                max_tokens=4096,
+                reasoning_effort=reasoning_effort,
+            )
+        elif ai_provider == "openai":
+            llm = factory.create_openai_llm(model=ai_model)
+        elif ai_provider == "anthropic":
+            llm = factory.create_anthropic_llm(model=ai_model)
+        elif ai_provider == "ollama":
+            llm = factory.create_ollama_llm(model=ai_model)
+        else:
+            raise ValueError(f"Unsupported provider: {ai_provider}")
+
+        # Create tools with game state reference
+        tools = create_react_tools(game, ai_player_id)
+
+        # Get system prompt with orders return instruction
+        system_prompt = get_system_prompt(verbose=False)
+        system_prompt += (
+            "\n\nIMPORTANT: After using the helper tools to validate your strategy, "
+            "return your final orders as a JSON array in this exact format:\n"
+            '[{"from": "A", "to": "B", "ships": 10, "rationale": "attack"}]\n\n'
+            "Do not include any other text after the JSON array."
+        )
+
+        # Create ReactPlayer with dependency injection
+        ai_player = ReactPlayer(
+            llm=llm,
+            game=game,
             player_id=ai_player_id,
-            provider=ai_provider,
-            model=ai_model,
-            use_mock=False,  # Use real LLM
-            verbose=False,  # Can enable for debugging
-            reasoning_effort=reasoning_effort,
+            tools=tools,
+            system_prompt=system_prompt,
+            verbose=False,
         )
 
         # Create session
