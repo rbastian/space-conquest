@@ -10,6 +10,7 @@ from langchain.tools import tool
 
 from ..models.game import Game
 from ..models.star import Star
+from ..utils.constants import HYPERSPACE_LOSS_PROB
 from ..utils.distance import chebyshev_distance
 
 logger = logging.getLogger(__name__)
@@ -162,7 +163,8 @@ def create_react_tools(game: Game, player_id: str) -> list:
             to_star: Destination star ID
 
         Returns:
-            Dictionary with distance, turns, arrival_turn, or error
+            Dictionary with distance_turns, arrival_turn, current_turn,
+            hyperspace_survival_probability (percentage string like "90%" showing chance fleet survives), or error
         """
         logger.info(f"[TOOL] calculate_distance: {from_star.upper()} → {to_star.upper()}")
         from_star_id = from_star.upper()
@@ -183,13 +185,28 @@ def create_react_tools(game: Game, player_id: str) -> list:
         # Arrival turn is current turn + distance
         arrival_turn = game.turn + distance_turns
 
-        return {
+        # Calculate hyperspace survival probability
+        # Each turn has 2% chance of fleet destruction (binary outcome)
+        # Survival probability = (survival_rate)^distance
+        survival_rate = 1 - HYPERSPACE_LOSS_PROB
+        hyperspace_survival_prob = survival_rate**distance_turns
+
+        result = {
             "from": from_star_id,
             "to": to_star_id,
             "distance_turns": distance_turns,
             "arrival_turn": arrival_turn,
             "current_turn": game.turn,
+            "hyperspace_survival_probability": f"{round(hyperspace_survival_prob * 100)}%",
         }
+
+        logger.info(
+            f"[TOOL] calculate_distance result: {from_star_id} → {to_star_id} = "
+            f"{distance_turns} turns, arrives turn {arrival_turn}, "
+            f"{result['hyperspace_survival_probability']} survival"
+        )
+
+        return result
 
     @tool
     def get_nearby_garrisons(target: str) -> dict:
@@ -213,7 +230,7 @@ def create_react_tools(game: Game, player_id: str) -> list:
         if not target_star:
             return {
                 "target": {"id": target_id, "name": "Unknown", "location": [0, 0]},
-                "garrisons": []
+                "garrisons": [],
             }
 
         # Find all garrisons (owned stars with ships > 0)
@@ -232,16 +249,18 @@ def create_react_tools(game: Game, player_id: str) -> list:
             # Check if home star
             is_home = star.id == game.players[player_id].home_star
 
-            garrisons.append({
-                "star_id": star.id,
-                "star_name": star.name,
-                "location": [star.x, star.y],
-                "stationed_ships": ships,
-                "distance_turns": distance_turns,
-                "arrival_turn": game.turn + distance_turns,
-                "ru": star.base_ru,
-                "is_home": is_home
-            })
+            garrisons.append(
+                {
+                    "star_id": star.id,
+                    "star_name": star.name,
+                    "location": [star.x, star.y],
+                    "stationed_ships": ships,
+                    "distance_turns": distance_turns,
+                    "arrival_turn": game.turn + distance_turns,
+                    "ru": star.base_ru,
+                    "is_home": is_home,
+                }
+            )
 
         # Sort by distance (closest first) and take top 3
         garrisons.sort(key=lambda g: g["distance_turns"])
@@ -251,9 +270,9 @@ def create_react_tools(game: Game, player_id: str) -> list:
             "target": {
                 "id": target_star.id,
                 "name": target_star.name,
-                "location": [target_star.x, target_star.y]
+                "location": [target_star.x, target_star.y],
             },
-            "garrisons": garrisons
+            "garrisons": garrisons,
         }
 
     return [validate_orders, calculate_distance, get_nearby_garrisons]

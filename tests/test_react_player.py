@@ -144,7 +144,7 @@ class TestReactTools:
         assert "error" in result["results"][0]
 
     def test_calculate_distance(self, game, tools):
-        """Test calculate_distance tool."""
+        """Test calculate_distance tool including hyperspace survival probability."""
         star1 = game.stars[0]
         star2 = game.stars[1]
 
@@ -152,11 +152,143 @@ class TestReactTools:
         distance_tool = tools[1]
         result = distance_tool.invoke({"from_star": star1.id, "to_star": star2.id})
 
+        # Test basic fields
         assert "distance_turns" in result
         assert "arrival_turn" in result
         assert "current_turn" in result
         assert result["distance_turns"] >= 0
         assert result["arrival_turn"] == game.turn + result["distance_turns"]
+
+        # Test hyperspace survival probability field
+        assert "hyperspace_survival_probability" in result
+
+        # Should be a string formatted as percentage
+        survival_prob = result["hyperspace_survival_probability"]
+        assert isinstance(survival_prob, str)
+        assert survival_prob.endswith("%")
+
+        # Extract numeric value for calculation verification
+        survival_percentage = int(survival_prob[:-1])
+        assert 0 <= survival_percentage <= 100
+
+        # Verify calculation: survival_rate = (0.98)^distance_turns
+        distance = result["distance_turns"]
+        expected_survival_rate = 0.98**distance
+        expected_percentage = round(expected_survival_rate * 100)
+
+        assert survival_percentage == expected_percentage, (
+            f"Expected {expected_percentage}% for {distance} turns, got {survival_percentage}%"
+        )
+
+    def test_calculate_distance_survival_probability_examples(self, game, tools):
+        """Test hyperspace survival probability with known distance examples."""
+        distance_tool = tools[1]
+
+        # Create test stars at known positions to get specific distances
+        # We'll test by creating stars and checking the formula
+        test_cases = [
+            # (distance_turns, expected_percentage)
+            (0, 100),  # 0 turns: 0.98^0 = 1.00 → 100%
+            (3, 94),  # 3 turns: 0.98^3 = 0.9412 → 94%
+            (5, 90),  # 5 turns: 0.98^5 = 0.9039 → 90%
+            (10, 82),  # 10 turns: 0.98^10 = 0.8171 → 82%
+            (35, 49),  # 35 turns: 0.98^35 = 0.4890 → 49%
+        ]
+
+        # Find or create star pairs at specific distances
+        for expected_distance, expected_percentage in test_cases:
+            # Find two stars at the right distance
+            found = False
+            for i, star1 in enumerate(game.stars):
+                for star2 in game.stars[i + 1 :]:
+                    # Calculate Chebyshev distance
+                    dx = abs(star1.x - star2.x)
+                    dy = abs(star1.y - star2.y)
+                    distance = max(dx, dy)
+
+                    if distance == expected_distance:
+                        result = distance_tool.invoke({"from_star": star1.id, "to_star": star2.id})
+
+                        survival_prob = result["hyperspace_survival_probability"]
+                        actual_percentage = int(survival_prob[:-1])
+
+                        assert actual_percentage == expected_percentage, (
+                            f"For distance {expected_distance} turns, expected {expected_percentage}%, got {actual_percentage}%"
+                        )
+
+                        found = True
+                        break
+                if found:
+                    break
+
+            # If we didn't find natural stars at this distance, create temporary ones
+            if not found:
+                # Create two test stars at the required distance
+                test_star1 = game.stars[0]
+                test_star2 = game.stars[1]
+
+                # Save original positions
+                orig_x1, orig_y1 = test_star1.x, test_star1.y
+                orig_x2, orig_y2 = test_star2.x, test_star2.y
+
+                # Set positions to achieve exact distance
+                test_star1.x = 0
+                test_star1.y = 0
+                test_star2.x = expected_distance
+                test_star2.y = 0
+
+                result = distance_tool.invoke(
+                    {"from_star": test_star1.id, "to_star": test_star2.id}
+                )
+
+                survival_prob = result["hyperspace_survival_probability"]
+                actual_percentage = int(survival_prob[:-1])
+
+                assert actual_percentage == expected_percentage, (
+                    f"For distance {expected_distance} turns, expected {expected_percentage}%, got {actual_percentage}%"
+                )
+
+                # Restore original positions
+                test_star1.x, test_star1.y = orig_x1, orig_y1
+                test_star2.x, test_star2.y = orig_x2, orig_y2
+
+    def test_calculate_distance_survival_rounding(self, game, tools):
+        """Test hyperspace survival probability rounding behavior."""
+        distance_tool = tools[1]
+
+        # Test rounding: 0.98^X should round correctly
+        # 0.9039 → 90% (rounds down from 90.39)
+        # 0.9051 → 91% (rounds up from 90.51)
+
+        test_star1 = game.stars[0]
+        test_star2 = game.stars[1]
+
+        # Save original positions
+        orig_x, orig_y = test_star2.x, test_star2.y
+
+        # Test distance that produces 0.9039 (5 turns → 90%)
+        test_star1.x = 0
+        test_star1.y = 0
+        test_star2.x = 5
+        test_star2.y = 0
+
+        result = distance_tool.invoke({"from_star": test_star1.id, "to_star": test_star2.id})
+
+        survival_prob = result["hyperspace_survival_probability"]
+        assert survival_prob == "90%", f"Expected 90%, got {survival_prob}"
+
+        # Test distance that produces 0.9227 (4 turns → 92%)
+        test_star2.x = 4
+        test_star2.y = 0
+
+        result = distance_tool.invoke({"from_star": test_star1.id, "to_star": test_star2.id})
+
+        survival_prob = result["hyperspace_survival_probability"]
+        # 0.98^4 = 0.92236816 → rounds to 92%
+        assert survival_prob == "92%", f"Expected 92%, got {survival_prob}"
+
+        # Restore original position
+        test_star2.x, test_star2.y = orig_x, orig_y
 
     def test_get_nearby_garrisons_basic(self, game, tools):
         """Test get_nearby_garrisons tool returns correct structure."""
@@ -239,6 +371,7 @@ class TestReactTools:
     def test_get_nearby_garrisons_logging(self, game, tools, caplog):
         """Test that get_nearby_garrisons logs correctly."""
         import logging
+
         caplog.set_level(logging.INFO)
 
         target_star = game.stars[0]
