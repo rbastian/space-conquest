@@ -1,12 +1,25 @@
 """Star map generation logic with balanced quadrant distribution."""
 
+from typing import TypedDict
+
 from ..models import Game, Player, Star
+from ..models.star import Quadrant
 from ..utils import (
     GRID_X,
     GRID_Y,
     HOME_RU,
     GameRNG,
 )
+
+
+class QuadrantConfig(TypedDict):
+    """Configuration for a map quadrant."""
+
+    x_range: tuple[int, int]
+    y_range: tuple[int, int]
+    npc_count: int
+    ru_values: list[int]
+
 
 # Fixed star ID to name mapping (deterministic)
 STAR_ID_TO_NAME = {
@@ -32,32 +45,52 @@ STAR_ID_TO_NAME = {
 
 # Quadrant definitions for balanced star distribution
 # 12x10 board divided into four 6x5 quadrants
-QUADRANTS = {
-    "Q1": {  # Northwest - P1 home region
+QUADRANTS: dict[str, QuadrantConfig] = {
+    "Northwest": {  # P1 home region
         "x_range": (0, 5),
         "y_range": (0, 4),
         "npc_count": 4,
         "ru_values": [1, 2, 2, 3],  # 8 RU total
     },
-    "Q2": {  # Northeast - Neutral
+    "Northeast": {  # Neutral
         "x_range": (6, 11),
         "y_range": (0, 4),
         "npc_count": 4,
         "ru_values": [1, 2, 2, 3],  # 8 RU total
     },
-    "Q3": {  # Southwest - Neutral
+    "Southwest": {  # Neutral
         "x_range": (0, 5),
         "y_range": (5, 9),
         "npc_count": 4,
         "ru_values": [1, 2, 2, 3],  # 8 RU total
     },
-    "Q4": {  # Southeast - P2 home region
+    "Southeast": {  # P2 home region
         "x_range": (6, 11),
         "y_range": (5, 9),
         "npc_count": 4,
         "ru_values": [1, 2, 2, 3],  # 8 RU total
     },
 }
+
+
+def _get_quadrant_from_coords(x: int, y: int) -> Quadrant:
+    """Determine which quadrant a coordinate is in.
+
+    Args:
+        x: X coordinate (0-11)
+        y: Y coordinate (0-9)
+
+    Returns:
+        Quadrant enum value
+    """
+    if x <= 5 and y <= 4:
+        return Quadrant.NORTHWEST
+    elif x >= 6 and y <= 4:
+        return Quadrant.NORTHEAST
+    elif x <= 5 and y >= 5:
+        return Quadrant.SOUTHWEST
+    else:  # x >= 6 and y >= 5
+        return Quadrant.SOUTHEAST
 
 
 def generate_map(seed: int) -> Game:
@@ -67,10 +100,10 @@ def generate_map(seed: int) -> Game:
     1. Place 2 home stars (0-3 parsecs from corners, using Chebyshev distance)
     2. Randomly assign which player gets which corner (deterministic based on seed)
     3. Place 16 NPC stars using balanced quadrant distribution:
-       - Q1 (NW): 4 NPC stars with RU {1,2,2,3} = 8 RU
-       - Q2 (NE): 4 NPC stars with RU {1,2,2,3} = 8 RU
-       - Q3 (SW): 4 NPC stars with RU {1,2,2,3} = 8 RU
-       - Q4 (SE): 4 NPC stars with RU {1,2,2,3} = 8 RU
+       - Northwest: 4 NPC stars with RU {1,2,2,3} = 8 RU
+       - Northeast: 4 NPC stars with RU {1,2,2,3} = 8 RU
+       - Southwest: 4 NPC stars with RU {1,2,2,3} = 8 RU
+       - Southeast: 4 NPC stars with RU {1,2,2,3} = 8 RU
     4. Shuffle star IDs (A-S) and assign to stars in generation order
     5. Assign star names deterministically based on star ID
     6. Initialize NPC ships = base_ru for each NPC star
@@ -116,7 +149,7 @@ def generate_map(seed: int) -> Game:
 
     # Generate NPC stars by quadrant with balanced RU distribution
     npc_stars: list[dict] = []
-    for quad_name in ["Q1", "Q2", "Q3", "Q4"]:  # Deterministic order
+    for quad_name in ["Northwest", "Northeast", "Southwest", "Southeast"]:  # Deterministic order
         quad_config = QUADRANTS[quad_name]
 
         # Shuffle RU values for this quadrant
@@ -132,7 +165,7 @@ def generate_map(seed: int) -> Game:
                 occupied_cells,
             )
             occupied_cells.add(position)
-            npc_stars.append({"position": position, "ru": ru_value})
+            npc_stars.append({"position": position, "ru": ru_value, "quadrant": quad_name})
 
     # Shuffle star IDs for random assignment
     star_ids = list("ABCDEFGHIJKLMNOPRS")
@@ -149,6 +182,7 @@ def generate_map(seed: int) -> Game:
             name=STAR_ID_TO_NAME[p1_star_id],
             x=p1_home[0],
             y=p1_home[1],
+            quadrant=_get_quadrant_from_coords(p1_home[0], p1_home[1]),
             base_ru=HOME_RU,
             owner="p1",
             npc_ships=0,
@@ -164,6 +198,7 @@ def generate_map(seed: int) -> Game:
             name=STAR_ID_TO_NAME[p2_star_id],
             x=p2_home[0],
             y=p2_home[1],
+            quadrant=_get_quadrant_from_coords(p2_home[0], p2_home[1]),
             base_ru=HOME_RU,
             owner="p2",
             npc_ships=0,
@@ -180,6 +215,7 @@ def generate_map(seed: int) -> Game:
                 name=STAR_ID_TO_NAME[star_id],
                 x=npc_data["position"][0],
                 y=npc_data["position"][1],
+                quadrant=Quadrant[npc_data["quadrant"].upper()],
                 base_ru=npc_data["ru"],
                 owner=None,
                 npc_ships=npc_data["ru"],

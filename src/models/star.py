@@ -1,6 +1,16 @@
 """Star system data model."""
 
 from dataclasses import dataclass, field
+from enum import Enum
+
+
+class Quadrant(Enum):
+    """Map quadrant enumeration."""
+
+    NORTHWEST = "Northwest"
+    NORTHEAST = "Northeast"
+    SOUTHWEST = "Southwest"
+    SOUTHEAST = "Southeast"
 
 
 @dataclass
@@ -19,6 +29,7 @@ class Star:
     base_ru: int  # Resource units (1-4)
     owner: str | None  # "p1", "p2", or None (NPC)
     npc_ships: int  # NPC defender count (initialized to base_ru for NPC stars)
+    quadrant: Quadrant | None = None  # Map quadrant (auto-computed if not provided)
     stationed_ships: dict[str, int] = field(default_factory=dict)  # {"p1": 5, "p2": 0}
 
     def __post_init__(self):
@@ -33,3 +44,14 @@ class Star:
             raise ValueError(f"Invalid owner: {self.owner} (must be None, 'p1', or 'p2')")
         if self.npc_ships < 0:
             raise ValueError(f"Invalid npc_ships: {self.npc_ships} (must be >= 0)")
+
+        # Auto-compute quadrant from coordinates if not provided
+        if self.quadrant is None:
+            if self.x <= 5 and self.y <= 4:
+                object.__setattr__(self, "quadrant", Quadrant.NORTHWEST)
+            elif self.x >= 6 and self.y <= 4:
+                object.__setattr__(self, "quadrant", Quadrant.NORTHEAST)
+            elif self.x <= 5 and self.y >= 5:
+                object.__setattr__(self, "quadrant", Quadrant.SOUTHWEST)
+            else:  # x >= 6 and y >= 5
+                object.__setattr__(self, "quadrant", Quadrant.SOUTHEAST)
