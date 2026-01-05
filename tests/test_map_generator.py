@@ -260,8 +260,8 @@ class TestMapGenerator:
         q3_stars = [s for s in game.stars if 0 <= s.x <= 5 and 5 <= s.y <= 9]
         q4_stars = [s for s in game.stars if 6 <= s.x <= 11 and 5 <= s.y <= 9]
 
-        # Q1 and Q4 should have 5 total stars each (1 home + 4 NPC)
-        # Q2 and Q3 should have 4 NPC stars each
+        # Northwest and Southeast should have 5 total stars each (1 home + 4 NPC)
+        # Northeast and Southwest should have 4 NPC stars each
         # This depends on where home stars land, but we can verify total counts
         total_stars = len(q1_stars) + len(q2_stars) + len(q3_stars) + len(q4_stars)
         assert total_stars == 18, f"Expected 18 stars total, got {total_stars}"
@@ -277,10 +277,10 @@ class TestMapGenerator:
         q4_npc = [s for s in game.stars if 6 <= s.x <= 11 and 5 <= s.y <= 9 and s.owner is None]
 
         # Count NPC stars per quadrant
-        assert len(q1_npc) == 4, f"Q1 should have 4 NPC stars, got {len(q1_npc)}"
-        assert len(q2_npc) == 4, f"Q2 should have 4 NPC stars, got {len(q2_npc)}"
-        assert len(q3_npc) == 4, f"Q3 should have 4 NPC stars, got {len(q3_npc)}"
-        assert len(q4_npc) == 4, f"Q4 should have 4 NPC stars, got {len(q4_npc)}"
+        assert len(q1_npc) == 4, f"Northwest should have 4 NPC stars, got {len(q1_npc)}"
+        assert len(q2_npc) == 4, f"Northeast should have 4 NPC stars, got {len(q2_npc)}"
+        assert len(q3_npc) == 4, f"Southwest should have 4 NPC stars, got {len(q3_npc)}"
+        assert len(q4_npc) == 4, f"Southeast should have 4 NPC stars, got {len(q4_npc)}"
 
         # Calculate RU totals per quadrant
         q1_ru = sum(s.base_ru for s in q1_npc)
@@ -289,10 +289,10 @@ class TestMapGenerator:
         q4_ru = sum(s.base_ru for s in q4_npc)
 
         # All quadrants should have 8 RU (1+2+2+3)
-        assert q1_ru == 8, f"Q1 should have 8 NPC RU, got {q1_ru}"
-        assert q2_ru == 8, f"Q2 should have 8 NPC RU, got {q2_ru}"
-        assert q3_ru == 8, f"Q3 should have 8 NPC RU, got {q3_ru}"
-        assert q4_ru == 8, f"Q4 should have 8 NPC RU, got {q4_ru}"
+        assert q1_ru == 8, f"Northwest should have 8 NPC RU, got {q1_ru}"
+        assert q2_ru == 8, f"Northeast should have 8 NPC RU, got {q2_ru}"
+        assert q3_ru == 8, f"Southwest should have 8 NPC RU, got {q3_ru}"
+        assert q4_ru == 8, f"Southeast should have 8 NPC RU, got {q4_ru}"
 
         # Total NPC RU should be 32
         total_npc_ru = q1_ru + q2_ru + q3_ru + q4_ru
@@ -317,10 +317,10 @@ class TestMapGenerator:
         )
 
         # All quadrants should have {1, 2, 2, 3}
-        assert q1_npc == [1, 2, 2, 3], f"Q1 NPC RU should be [1,2,2,3], got {q1_npc}"
-        assert q2_npc == [1, 2, 2, 3], f"Q2 NPC RU should be [1,2,2,3], got {q2_npc}"
-        assert q3_npc == [1, 2, 2, 3], f"Q3 NPC RU should be [1,2,2,3], got {q3_npc}"
-        assert q4_npc == [1, 2, 2, 3], f"Q4 NPC RU should be [1,2,2,3], got {q4_npc}"
+        assert q1_npc == [1, 2, 2, 3], f"Northwest NPC RU should be [1,2,2,3], got {q1_npc}"
+        assert q2_npc == [1, 2, 2, 3], f"Northeast NPC RU should be [1,2,2,3], got {q2_npc}"
+        assert q3_npc == [1, 2, 2, 3], f"Southwest NPC RU should be [1,2,2,3], got {q3_npc}"
+        assert q4_npc == [1, 2, 2, 3], f"Southeast NPC RU should be [1,2,2,3], got {q4_npc}"
 
     def test_home_stars_minimum_separation(self):
         """Test that home stars maintain minimum separation distance."""
@@ -352,16 +352,16 @@ class TestMapGenerator:
             q4_npc = [s for s in game.stars if 6 <= s.x <= 11 and 5 <= s.y <= 9 and s.owner is None]
 
             # Every seed should have the same distribution
-            assert len(q1_npc) == 4, f"Seed {seed}: Q1 should have 4 NPC stars"
-            assert len(q2_npc) == 4, f"Seed {seed}: Q2 should have 4 NPC stars"
-            assert len(q3_npc) == 4, f"Seed {seed}: Q3 should have 4 NPC stars"
-            assert len(q4_npc) == 4, f"Seed {seed}: Q4 should have 4 NPC stars"
+            assert len(q1_npc) == 4, f"Seed {seed}: Northwest should have 4 NPC stars"
+            assert len(q2_npc) == 4, f"Seed {seed}: Northeast should have 4 NPC stars"
+            assert len(q3_npc) == 4, f"Seed {seed}: Southwest should have 4 NPC stars"
+            assert len(q4_npc) == 4, f"Seed {seed}: Southeast should have 4 NPC stars"
 
             # RU balance should be consistent
-            assert sum(s.base_ru for s in q1_npc) == 8, f"Seed {seed}: Q1 should have 8 RU"
-            assert sum(s.base_ru for s in q2_npc) == 8, f"Seed {seed}: Q2 should have 8 RU"
-            assert sum(s.base_ru for s in q3_npc) == 8, f"Seed {seed}: Q3 should have 8 RU"
-            assert sum(s.base_ru for s in q4_npc) == 8, f"Seed {seed}: Q4 should have 8 RU"
+            assert sum(s.base_ru for s in q1_npc) == 8, f"Seed {seed}: Northwest should have 8 RU"
+            assert sum(s.base_ru for s in q2_npc) == 8, f"Seed {seed}: Northeast should have 8 RU"
+            assert sum(s.base_ru for s in q3_npc) == 8, f"Seed {seed}: Southwest should have 8 RU"
+            assert sum(s.base_ru for s in q4_npc) == 8, f"Seed {seed}: Southeast should have 8 RU"
 
     def test_corner_assignment_randomization(self):
         """Test that corner assignments are randomized across different seeds."""
@@ -424,3 +424,40 @@ class TestMapGenerator:
             assert (p2_home_1.x, p2_home_1.y) == (p2_home_2.x, p2_home_2.y), (
                 f"Seed {seed}: P2 home position should be deterministic"
             )
+
+    def test_quadrant_assignment(self):
+        """Test that all stars have correct quadrant assignments."""
+        from src.models import Quadrant
+
+        game = generate_map(42)
+
+        for star in game.stars:
+            # Verify quadrant matches coordinates
+            if star.x <= 5 and star.y <= 4:
+                assert star.quadrant == Quadrant.NORTHWEST, (
+                    f"Star {star.id} at ({star.x},{star.y}) should be Northwest"
+                )
+            elif star.x >= 6 and star.y <= 4:
+                assert star.quadrant == Quadrant.NORTHEAST, (
+                    f"Star {star.id} at ({star.x},{star.y}) should be Northeast"
+                )
+            elif star.x <= 5 and star.y >= 5:
+                assert star.quadrant == Quadrant.SOUTHWEST, (
+                    f"Star {star.id} at ({star.x},{star.y}) should be Southwest"
+                )
+            else:  # x >= 6 and y >= 5
+                assert star.quadrant == Quadrant.SOUTHEAST, (
+                    f"Star {star.id} at ({star.x},{star.y}) should be Southeast"
+                )
+
+        # Count stars per quadrant
+        nw_stars = [s for s in game.stars if s.quadrant == Quadrant.NORTHWEST]
+        ne_stars = [s for s in game.stars if s.quadrant == Quadrant.NORTHEAST]
+        sw_stars = [s for s in game.stars if s.quadrant == Quadrant.SOUTHWEST]
+        se_stars = [s for s in game.stars if s.quadrant == Quadrant.SOUTHEAST]
+
+        # Should have 4-5 stars per quadrant (4 NPC + 0-1 home star)
+        assert 4 <= len(nw_stars) <= 5, f"Northwest should have 4-5 stars, got {len(nw_stars)}"
+        assert 4 <= len(ne_stars) <= 5, f"Northeast should have 4-5 stars, got {len(ne_stars)}"
+        assert 4 <= len(sw_stars) <= 5, f"Southwest should have 4-5 stars, got {len(sw_stars)}"
+        assert 4 <= len(se_stars) <= 5, f"Southeast should have 4-5 stars, got {len(se_stars)}"

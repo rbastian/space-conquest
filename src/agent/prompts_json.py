@@ -44,7 +44,8 @@ def format_game_state_prompt_json(game, player_id: str) -> str:
         "your_home": {
             "name": home_star.name,
             "id": home_star.id,
-            "location": [home_star.x, home_star.y],
+            "coordinates": {"x": home_star.x, "y": home_star.y},
+            "quadrant": home_star.quadrant.value,
         }
     }
 
@@ -54,7 +55,8 @@ def format_game_state_prompt_json(game, player_id: str) -> str:
         spatial_awareness["opponent_home"] = {
             "name": opponent_home.name,
             "id": opponent_home.id,
-            "location": [opponent_home.x, opponent_home.y],
+            "coordinates": {"x": opponent_home.x, "y": opponent_home.y},
+            "quadrant": opponent_home.quadrant.value,
             "victory_objective": "CAPTURE THIS STAR TO WIN!",
         }
     else:
@@ -90,7 +92,8 @@ def format_game_state_prompt_json(game, player_id: str) -> str:
                             {
                                 "name": star.name,
                                 "id": star.id,
-                                "location": [star.x, star.y],
+                                "coordinates": {"x": star.x, "y": star.y},
+                                "quadrant": star.quadrant.value,
                                 "status": "LIKELY_HOME",
                             }
                         )
@@ -99,7 +102,8 @@ def format_game_state_prompt_json(game, player_id: str) -> str:
                             {
                                 "name": star.name,
                                 "id": star.id,
-                                "location": [star.x, star.y],
+                                "coordinates": {"x": star.x, "y": star.y},
+                                "quadrant": star.quadrant.value,
                                 "status": "ENEMY_CONTROLLED",
                             }
                         )
@@ -109,7 +113,8 @@ def format_game_state_prompt_json(game, player_id: str) -> str:
                         {
                             "name": star.name,
                             "id": star.id,
-                            "location": [star.x, star.y],
+                            "coordinates": {"x": star.x, "y": star.y},
+                            "quadrant": star.quadrant.value,
                             "status": "UNKNOWN",
                         }
                     )
@@ -130,6 +135,8 @@ def format_game_state_prompt_json(game, player_id: str) -> str:
         star_data = {
             "name": star.name,
             "id": star.id,
+            "coordinates": {"x": star.x, "y": star.y},
+            "quadrant": star.quadrant.value,
             "ru": star.base_ru,
             "ships": ships,
             "distance_from_home": distance_from_home,
@@ -171,6 +178,8 @@ def format_game_state_prompt_json(game, player_id: str) -> str:
             star_data = {
                 "name": star.name,
                 "id": star.id,
+                "coordinates": {"x": star.x, "y": star.y},
+                "quadrant": star.quadrant.value,
                 "distance_from_home": dist,
                 "hyperspace_loss_probability_percent": round(hyperspace_loss_prob, 2),
                 "threat_level": threat,
@@ -193,7 +202,8 @@ def format_game_state_prompt_json(game, player_id: str) -> str:
                 {
                     "name": star.name,
                     "id": star.id,
-                    "location": [star.x, star.y],
+                    "coordinates": {"x": star.x, "y": star.y},
+                    "quadrant": star.quadrant.value,
                     "ru": star.base_ru,
                     "estimated_defenders": star.base_ru,
                     "distance_from_home": dist,
@@ -210,7 +220,8 @@ def format_game_state_prompt_json(game, player_id: str) -> str:
                 {
                     "name": star.name,
                     "id": star.id,
-                    "location": [star.x, star.y],
+                    "coordinates": {"x": star.x, "y": star.y},
+                    "quadrant": star.quadrant.value,
                     "distance_from_home": dist,
                 }
             )
