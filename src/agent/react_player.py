@@ -75,6 +75,7 @@ class ReactPlayer:
             "validate_orders": 0,
             "calculate_distance": 0,
             "get_nearby_garrisons": 0,
+            "find_safest_route": 0,
         }
 
         # Log successful initialization
@@ -117,6 +118,7 @@ class ReactPlayer:
             Tuple of (message_history, orders)
         """
         message_history = [HumanMessage(content=initial_message)]
+
         consecutive_errors = 0
 
         for iteration in range(1, max_iterations + 1):
@@ -178,6 +180,7 @@ class ReactPlayer:
 
         # Extract orders from final AI message
         orders = self._extract_orders_from_messages(message_history)
+
         return message_history, orders
 
     def _log_iteration_messages(self, messages: list[BaseMessage]) -> None:

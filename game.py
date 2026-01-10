@@ -9,6 +9,7 @@ import argparse
 import logging
 import sys
 
+from src.agent.graph_react_player import GraphReactPlayer
 from src.agent.langgraph_player import LangGraphPlayer
 from src.agent.llm_factory import LLMFactory
 from src.agent.prompts import get_system_prompt
@@ -58,6 +59,14 @@ class GameOrchestrator:
                     or getattr(p2_controller.llm, "model_name", None)  # ChatOpenAI
                     or "langgraph-agent"
                 )
+        elif isinstance(p2_controller, GraphReactPlayer):
+            # GraphReactPlayer: always uses raw LLM
+            self.game.p2_model_id = (
+                getattr(p2_controller.llm, "model_id", None)  # ChatBedrockConverse
+                or getattr(p2_controller.llm, "model", None)  # ChatAnthropic, ChatOllama
+                or getattr(p2_controller.llm, "model_name", None)  # ChatOpenAI
+                or "graph-react-agent"
+            )
         elif isinstance(p2_controller, ReactPlayer):
             # ReactPlayer: always uses raw LLM
             # Different LLM classes use different attribute names
@@ -290,19 +299,19 @@ Examples:
     )
     parser.add_argument(
         "--agent",
-        choices=["langgraph", "react"],
+        choices=["langgraph", "react", "graph-react"],
         default="langgraph",
-        help="Agent type: langgraph=StateGraph (default), react=ReAct pattern (simpler). Used for hvl mode and as default for lvl mode.",
+        help="Agent type: langgraph=StateGraph (default), react=ReAct pattern (simpler), graph-react=Structured decision workflow with LangGraph. Used for hvl mode and as default for lvl mode.",
     )
     parser.add_argument(
         "--p1-agent",
-        choices=["langgraph", "react"],
+        choices=["langgraph", "react", "graph-react"],
         default=None,
         help="Player 1 agent type for lvl mode (overrides --agent for p1). Defaults to --agent if not specified.",
     )
     parser.add_argument(
         "--p2-agent",
-        choices=["langgraph", "react"],
+        choices=["langgraph", "react", "graph-react"],
         default=None,
         help="Player 2 agent type for hvl and lvl modes (overrides --agent for p2). Defaults to --agent if not specified.",
     )
@@ -430,6 +439,30 @@ Examples:
                     system_prompt=system_prompt,
                     verbose=args.debug,
                 )
+            elif args.p2_agent == "graph-react":
+                # GraphReactPlayer pattern with dependency injection
+                llm = create_llm_for_agent(
+                    args.provider,
+                    args.model,
+                    "us-east-1",
+                    args.api_base,
+                    args.reasoning_effort,
+                )
+
+                # Create tools with game state reference
+                tools = create_react_tools(game, "p2")
+
+                # Get system prompt (not used by graph nodes, but kept for consistency)
+                system_prompt = get_system_prompt(verbose=args.debug)
+
+                p2 = GraphReactPlayer(
+                    llm=llm,
+                    game=game,
+                    player_id="p2",
+                    tools=tools,
+                    system_prompt=system_prompt,
+                    verbose=args.debug,
+                )
             else:  # react
                 # ReactPlayer pattern with dependency injection
                 llm = create_llm_for_agent(
@@ -510,6 +543,18 @@ Examples:
                     system_prompt=system_prompt1,
                     verbose=args.debug,
                 )
+            elif args.p1_agent == "graph-react":
+                tools1 = create_react_tools(game, "p1")
+                system_prompt1 = get_system_prompt(verbose=args.debug)
+
+                p1 = GraphReactPlayer(
+                    llm=llm1,
+                    game=game,
+                    player_id="p1",
+                    tools=tools1,
+                    system_prompt=system_prompt1,
+                    verbose=args.debug,
+                )
             else:  # react
                 tools1 = create_react_tools(game, "p1")
                 system_prompt1 = get_system_prompt(verbose=args.debug)
@@ -542,6 +587,18 @@ Examples:
                     game=game,
                     tools=tools2_instance,
                     tool_definitions=tool_defs2,
+                    system_prompt=system_prompt2,
+                    verbose=args.debug,
+                )
+            elif args.p2_agent == "graph-react":
+                tools2 = create_react_tools(game, "p2")
+                system_prompt2 = get_system_prompt(verbose=args.debug)
+
+                p2 = GraphReactPlayer(
+                    llm=llm2,
+                    game=game,
+                    player_id="p2",
+                    tools=tools2,
                     system_prompt=system_prompt2,
                     verbose=args.debug,
                 )

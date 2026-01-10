@@ -4,7 +4,9 @@ These tools help the agent make decisions but don't store orders.
 The agent returns orders in its final text response as JSON.
 """
 
+import heapq
 import logging
+from collections import defaultdict
 
 from langchain.tools import tool
 
@@ -158,6 +160,9 @@ def create_react_tools(game: Game, player_id: str) -> list:
 
         Use this to plan your fleet movements and assess risks.
 
+        NOTE: For journeys over 4 turns, consider using find_safest_route to
+        discover multi-hop routes that may be significantly safer.
+
         Args:
             from_star: Origin star ID
             to_star: Destination star ID
@@ -275,4 +280,202 @@ def create_react_tools(game: Game, player_id: str) -> list:
             "garrisons": garrisons,
         }
 
-    return [validate_orders, calculate_distance, get_nearby_garrisons]
+    def _dijkstra_safest_path(
+        from_star_obj: Star, to_star_obj: Star, max_hops: int, prefer_controlled: bool
+    ) -> tuple[list[str], float, int] | None:
+        """Find safest path using Dijkstra's algorithm with cumulative risk as edge weight.
+
+        Args:
+            from_star_obj: Origin star object
+            to_star_obj: Destination star object
+            max_hops: Maximum number of intermediate waypoints allowed
+            prefer_controlled: If True, reduce edge weight by 20% for player-controlled destinations
+
+        Returns:
+            Tuple of (path, total_risk, total_distance) or None if no path within max_hops
+            - path: List of star IDs from origin to destination
+            - total_risk: Cumulative hyperspace risk for entire route
+            - total_distance: Total distance in turns
+        """
+        # Priority queue: (cumulative_risk, cumulative_distance, current_star_id, path)
+        # path is list of star IDs
+        pq = [(0.0, 0, from_star_obj.id, [from_star_obj.id])]
+
+        # Track best risk to reach each (star_id, hop_count) state
+        # This allows revisiting a star if we get there with fewer hops
+        best_risk: dict[tuple[str, int], float] = defaultdict(lambda: float("inf"))
+        best_risk[(from_star_obj.id, 0)] = 0.0
+
+        while pq:
+            curr_risk, curr_distance, curr_star_id, path = heapq.heappop(pq)
+
+            # Current hop count is path length minus 1 (path includes origin)
+            curr_hops = len(path) - 1
+
+            # If we reached destination, return this path
+            if curr_star_id == to_star_obj.id:
+                return (path, curr_risk, curr_distance)
+
+            # If we've exceeded max_hops, skip this path
+            if curr_hops >= max_hops + 1:  # max_hops waypoints = max_hops+1 total segments
+                continue
+
+            # Get current star object
+            curr_star = _get_star_by_id(curr_star_id)
+            if not curr_star:
+                continue
+
+            # Explore all neighboring stars
+            for next_star in game.stars:
+                # Skip if already in path (avoid cycles)
+                if next_star.id in path:
+                    continue
+
+                # Calculate edge distance and risk
+                edge_distance = chebyshev_distance(
+                    curr_star.x, curr_star.y, next_star.x, next_star.y
+                )
+                edge_risk = calculate_hyperspace_cumulative_risk(edge_distance)
+
+                # Apply preference for controlled stars (reduce risk by 20%)
+                if prefer_controlled and next_star.owner == player_id:
+                    edge_risk *= 0.8
+
+                # Calculate new cumulative values
+                new_risk = curr_risk + edge_risk
+                new_distance = curr_distance + edge_distance
+                new_path = path + [next_star.id]
+                new_hops = len(new_path) - 1
+
+                # Check if this is better than previous best for this state
+                state = (next_star.id, new_hops)
+                if new_risk < best_risk[state]:
+                    best_risk[state] = new_risk
+                    heapq.heappush(pq, (new_risk, new_distance, next_star.id, new_path))
+
+        # No path found within max_hops
+        return None
+
+    @tool
+    def find_safest_route(
+        from_star: str, to_star: str, max_hops: int = 3, prefer_controlled: bool = True
+    ) -> dict:
+        """Find the safest route between two stars, considering hyperspace loss risk.
+
+        IMPORTANT: Use this tool for any journey over 4 turns to discover safer multi-hop
+        routes. Due to n log n hyperspace risk scaling, longer direct routes are much
+        riskier than shorter multi-hop routes with waypoints.
+
+        Example: A direct 8-turn journey has 48% loss risk, but routing through a
+        waypoint (4+4 turns) reduces risk to 32% - a 33% improvement!
+
+        Uses pathfinding to find optimal routes that minimize cumulative hyperspace loss.
+        Prefer routes through your controlled stars for safer waypoints.
+
+        Args:
+            from_star: Origin star ID (e.g., 'A')
+            to_star: Destination star ID (e.g., 'K')
+            max_hops: Maximum number of waypoint stops (default 3, max 5)
+            prefer_controlled: If True, prefer routes through your controlled stars (default True)
+
+        Returns:
+            Dictionary with:
+            - direct_route: Info about direct route (distance, risk, arrival_turn)
+            - optimal_route: Best route found (path, total_distance, total_risk, arrival_turn, waypoints)
+            - recommendation: Summary text explaining why this route is better
+        """
+        logger.info(
+            f"[TOOL] find_safest_route: {from_star.upper()} → {to_star.upper()}, "
+            f"max_hops={max_hops}, prefer_controlled={prefer_controlled}"
+        )
+
+        # Input validation
+        max_hops = min(max(max_hops, 1), 5)  # Clamp to 1-5
+
+        from_star_obj = _get_star_by_id(from_star.upper())
+        to_star_obj = _get_star_by_id(to_star.upper())
+
+        if not from_star_obj:
+            return {"error": f"Star {from_star.upper()} does not exist"}
+        if not to_star_obj:
+            return {"error": f"Star {to_star.upper()} does not exist"}
+
+        # Handle same star case
+        if from_star_obj.id == to_star_obj.id:
+            return {
+                "from": from_star_obj.id,
+                "to": to_star_obj.id,
+                "direct_route": {
+                    "distance_turns": 0,
+                    "cumulative_risk": "0%",
+                    "arrival_turn": game.turn,
+                },
+                "optimal_route": {
+                    "path": [from_star_obj.id],
+                    "waypoints": [],
+                    "total_distance_turns": 0,
+                    "cumulative_risk": "0%",
+                    "arrival_turn": game.turn,
+                    "risk_reduction": "0%",
+                },
+                "recommendation": "Origin and destination are the same star",
+            }
+
+        # Calculate direct route
+        direct_distance = chebyshev_distance(
+            from_star_obj.x, from_star_obj.y, to_star_obj.x, to_star_obj.y
+        )
+        direct_risk = calculate_hyperspace_cumulative_risk(direct_distance)
+        direct_arrival = game.turn + direct_distance
+
+        # Find optimal multi-hop route
+        optimal_path_result = _dijkstra_safest_path(
+            from_star_obj, to_star_obj, max_hops, prefer_controlled
+        )
+
+        if not optimal_path_result:
+            # No path found within max_hops
+            return {
+                "error": f"No path found from {from_star.upper()} to {to_star.upper()} within {max_hops} hops"
+            }
+
+        path, total_risk, total_distance = optimal_path_result
+
+        # Calculate risk reduction
+        risk_reduction = direct_risk - total_risk
+        risk_reduction_pct = (risk_reduction / direct_risk * 100) if direct_risk > 0 else 0
+
+        # Format result
+        result = {
+            "from": from_star.upper(),
+            "to": to_star.upper(),
+            "direct_route": {
+                "distance_turns": direct_distance,
+                "cumulative_risk": f"{round(direct_risk * 100)}%",
+                "arrival_turn": direct_arrival,
+            },
+            "optimal_route": {
+                "path": path,  # List of star IDs
+                "waypoints": path[1:-1] if len(path) > 2 else [],  # Intermediate stops
+                "total_distance_turns": total_distance,
+                "cumulative_risk": f"{round(total_risk * 100)}%",
+                "arrival_turn": game.turn + total_distance,
+                "risk_reduction": f"{round(risk_reduction_pct)}%" if risk_reduction > 0 else "0%",
+            },
+        }
+
+        # Add recommendation
+        if len(path) == 2:
+            result["recommendation"] = "Direct route is optimal (no waypoints needed)"
+        elif risk_reduction_pct >= 5:  # At least 5% risk reduction
+            waypoint_names = [_get_star_by_id(s).name for s in path[1:-1]]
+            result["recommendation"] = (
+                f"Multi-hop route reduces risk by {result['optimal_route']['risk_reduction']} via waypoints: {', '.join(waypoint_names)}"
+            )
+        else:
+            result["recommendation"] = "Multi-hop route has similar risk to direct route"
+
+        logger.info(f"[TOOL] find_safest_route result: {result['recommendation']}")
+        return result
+
+    return [validate_orders, calculate_distance, get_nearby_garrisons, find_safest_route]

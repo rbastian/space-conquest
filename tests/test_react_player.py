@@ -62,7 +62,9 @@ class TestReactTools:
     def test_create_tools_returns_list(self, tools):
         """Test that create_react_tools returns a list."""
         assert isinstance(tools, list)
-        assert len(tools) == 3  # validate_orders, calculate_distance, get_nearby_garrisons
+        assert (
+            len(tools) == 4
+        )  # validate_orders, calculate_distance, get_nearby_garrisons, find_safest_route
 
     def test_validate_orders_valid(self, game, tools):
         """Test validate_orders with valid orders."""
@@ -396,6 +398,159 @@ class TestReactTools:
         log_messages = [record.message for record in caplog.records]
         assert any("[TOOL] get_nearby_garrisons" in msg for msg in log_messages)
 
+    def test_find_safest_route_direct_optimal(self, game, tools):
+        """Test find_safest_route when direct route is optimal (short distance)."""
+        # Setup: Two stars close together
+        star1 = game.stars[0]
+        star2 = game.stars[1]
+
+        # Ensure they're close (2-3 turns max)
+        orig_x, orig_y = star2.x, star2.y
+        star2.x = star1.x + 2
+        star2.y = star1.y
+
+        # Get find_safest_route tool (index 3)
+        route_tool = tools[3]
+        result = route_tool.invoke({"from_star": star1.id, "to_star": star2.id, "max_hops": 2})
+
+        # Check structure
+        assert "from" in result
+        assert "to" in result
+        assert "direct_route" in result
+        assert "optimal_route" in result
+        assert "recommendation" in result
+
+        # For short distances, direct should be optimal
+        assert result["optimal_route"]["path"] == [star1.id, star2.id]
+        assert result["optimal_route"]["waypoints"] == []
+        assert "Direct route is optimal" in result["recommendation"]
+
+        # Restore
+        star2.x, star2.y = orig_x, orig_y
+
+    def test_find_safest_route_multihop_better(self, game, tools):
+        """Test find_safest_route when multi-hop route is better (long distance)."""
+        # Setup: Create a long route where waypoint is beneficial
+        star1 = game.stars[0]
+        star2 = game.stars[1]
+        star3 = game.stars[2]
+
+        # Save originals
+        orig_coords = [(s.x, s.y) for s in [star1, star2, star3]]
+
+        # Create linear path: A(0,0) -> B(4,0) -> C(8,0)
+        # Direct A->C = 8 turns (48% risk)
+        # Via B: A->B->C = 4+4 turns (32% combined risk) - much better!
+        star1.x, star1.y = 0, 0
+        star2.x, star2.y = 4, 0
+        star3.x, star3.y = 8, 0
+
+        route_tool = tools[3]
+        result = route_tool.invoke({"from_star": star1.id, "to_star": star3.id, "max_hops": 2})
+
+        # Direct route should be 8 turns
+        assert result["direct_route"]["distance_turns"] == 8
+
+        # Optimal route should use waypoint
+        assert len(result["optimal_route"]["waypoints"]) > 0
+        assert star2.id in result["optimal_route"]["path"]
+
+        # Risk reduction should be significant
+        risk_reduction = int(result["optimal_route"]["risk_reduction"].rstrip("%"))
+        assert risk_reduction > 0
+
+        # Recommendation should mention waypoint
+        assert "waypoint" in result["recommendation"].lower()
+
+        # Restore
+        for s, (x, y) in zip([star1, star2, star3], orig_coords, strict=False):
+            s.x, s.y = x, y
+
+    def test_find_safest_route_same_star(self, game, tools):
+        """Test find_safest_route when origin and destination are the same."""
+        star = game.stars[0]
+
+        route_tool = tools[3]
+        result = route_tool.invoke({"from_star": star.id, "to_star": star.id, "max_hops": 2})
+
+        # Should return zero distance/risk
+        assert result["direct_route"]["distance_turns"] == 0
+        assert result["direct_route"]["cumulative_risk"] == "0%"
+        assert result["optimal_route"]["path"] == [star.id]
+        assert result["recommendation"] == "Origin and destination are the same star"
+
+    def test_find_safest_route_invalid_star(self, game, tools):
+        """Test find_safest_route with invalid star ID."""
+        star = game.stars[0]
+
+        route_tool = tools[3]
+        result = route_tool.invoke({"from_star": "INVALID", "to_star": star.id, "max_hops": 2})
+
+        assert "error" in result
+        assert "does not exist" in result["error"]
+
+    def test_find_safest_route_prefer_controlled(self, game, tools):
+        """Test find_safest_route with prefer_controlled parameter."""
+        # Setup: Create scenario with controlled and neutral waypoints
+        star1 = game.stars[0]
+        star2 = game.stars[1]
+        star3 = game.stars[2]
+        star4 = game.stars[3]
+
+        # Save originals
+        orig_coords = [(s.x, s.y) for s in [star1, star2, star3, star4]]
+        orig_owners = [s.owner for s in [star1, star2, star3, star4]]
+
+        # Create: A(0,0) -> controlled B(4,0) or neutral C(4,1) -> D(8,0)
+        star1.x, star1.y = 0, 0
+        star1.owner = "p2"
+
+        star2.x, star2.y = 4, 0  # Controlled waypoint
+        star2.owner = "p2"
+
+        star3.x, star3.y = 4, 1  # Neutral waypoint (slightly off path)
+        star3.owner = None
+
+        star4.x, star4.y = 8, 0
+        star4.owner = None
+
+        route_tool = tools[3]
+
+        # Without prefer_controlled, might pick either waypoint
+        result_no_pref = route_tool.invoke(
+            {"from_star": star1.id, "to_star": star4.id, "max_hops": 2, "prefer_controlled": False}
+        )
+
+        # With prefer_controlled, should prefer star2 (controlled)
+        result_pref = route_tool.invoke(
+            {"from_star": star1.id, "to_star": star4.id, "max_hops": 2, "prefer_controlled": True}
+        )
+
+        # Both should find routes
+        assert "optimal_route" in result_no_pref
+        assert "optimal_route" in result_pref
+
+        # Restore
+        for s, (x, y), owner in zip(
+            [star1, star2, star3, star4], orig_coords, orig_owners, strict=False
+        ):
+            s.x, s.y = x, y
+            s.owner = owner
+
+    def test_find_safest_route_max_hops_limit(self, game, tools):
+        """Test find_safest_route respects max_hops limit."""
+        star1 = game.stars[0]
+        star2 = game.stars[-1]
+
+        route_tool = tools[3]
+
+        # With max_hops=1, can only have 1 waypoint
+        result = route_tool.invoke({"from_star": star1.id, "to_star": star2.id, "max_hops": 1})
+
+        if "optimal_route" in result:
+            # Should have at most 1 waypoint
+            assert len(result["optimal_route"]["waypoints"]) <= 1
+
 
 class TestReactPlayer:
     """Test suite for ReactPlayer agent implementation."""
@@ -439,7 +594,7 @@ class TestReactPlayer:
         assert player.player_id == "p2"
         assert player.agent is not None
         assert player.llm is not None
-        assert len(player.tools) == 3
+        assert len(player.tools) == 4
 
     def test_get_orders_returns_list(self, player, game):
         """Test that get_orders returns a list."""
