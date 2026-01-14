@@ -1,4 +1,5 @@
 - Always use uv for package management and for running any programs or tests.
+- When working with Python, invoke the relevant /astral:<skill> for uv, ty, and ruff to ensure best practices are followed.
 - Remember that all coding tasks should be delegated. Game coding should be given to the game coding agent. LLM/Agent coding should be given to the langchain agent.
 
 ## MCP Agent Mail: coordination for multi-agent workflows

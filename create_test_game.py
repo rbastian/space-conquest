@@ -117,7 +117,7 @@ def main():
     game = executor.execute_phase_orders(game, {"p1": orders_p1, "p2": orders_p2})
 
     # Simulate one turn of movement
-    game, _ = executor.execute_phase_movement(game)
+    game, _, _ = executor.execute_phase_movement(game)
     game.turn += 1
 
     # Add a combat event for demonstration
