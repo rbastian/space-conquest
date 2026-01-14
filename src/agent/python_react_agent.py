@@ -1,7 +1,12 @@
-"""ReactPlayer - Simpler agent alternative using LangChain's create_agent.
+"""PythonReactAgent - Experimental agent with Python REPL for computational strategies.
 
-This player uses dependency injection for LLM, tools, and system prompt.
-The agent returns orders as JSON in its final text response.
+This player is similar to ReactPlayer but with a key difference:
+- Uses Python REPL tool for arbitrary code execution
+- Minimal predefined tool set (only validate_orders)
+- Agent can write Python code to analyze game state and compute complex strategies
+
+The goal is to test if computational capabilities improve strategic decision-making
+compared to the standard ReactPlayer with its predefined analytical tools.
 """
 
 import json
@@ -29,11 +34,19 @@ MAX_MESSAGES = 20
 MAX_TOKENS = 8000
 
 
-class ReactPlayer:
-    """ReactPlayer agent with dependency injection.
+class PythonReactAgent:
+    """PythonReactAgent with Python REPL for computational strategies.
 
-    A simpler alternative to LangGraphPlayer that uses LangChain's create_agent
-    function. The agent is created once and reused across all turns.
+    This agent uses:
+    - validate_orders tool for order validation
+    - Python REPL tool for arbitrary code execution and analysis
+
+    The REPL has access to game state variables, allowing the agent to:
+    - Calculate distances and optimal routes programmatically
+    - Analyze strategic positions with custom algorithms
+    - Compute complex combat scenarios
+    - Optimize fleet distributions
+    - Perform statistical analysis on game state
     """
 
     def __init__(
@@ -46,7 +59,7 @@ class ReactPlayer:
         verbose: bool = False,
         enable_decision_logging: bool = False,
     ):
-        """Initialize ReactPlayer with injected dependencies.
+        """Initialize PythonReactAgent with injected dependencies.
 
         Creates the agent ONCE here, to be reused across all turns.
 
@@ -54,7 +67,7 @@ class ReactPlayer:
             llm: LangChain ChatModel instance (created by LLMFactory in game.py)
             game: Game object reference (mutated each turn by TurnExecutor)
             player_id: Player ID ("p1" or "p2")
-            tools: List of @tool decorated functions (from react_tools.py)
+            tools: List of tools (validate_orders + python_repl)
             system_prompt: System prompt text for the agent
             verbose: Enable verbose logging
             enable_decision_logging: Enable detailed decision logging
@@ -77,9 +90,7 @@ class ReactPlayer:
         # Tool usage tracking
         self._tool_usage_counts: dict[str, int] = {
             "validate_orders": 0,
-            "calculate_distance": 0,
-            "get_nearby_garrisons": 0,
-            "find_safest_route": 0,
+            "python_repl": 0,
         }
 
         # Log successful initialization
@@ -91,7 +102,7 @@ class ReactPlayer:
             or "unknown"
         )
         logger.info(
-            f"ReactPlayer initialized for {player_id} with {len(tools)} tools and model {llm_model}"
+            f"PythonReactAgent initialized for {player_id} with {len(tools)} tools and model {llm_model}"
         )
         logger.info(f"[SYSTEM] System prompt:\n{system_prompt}")
 
@@ -372,7 +383,7 @@ class ReactPlayer:
         # Format game state as initial message
         formatted_state = format_game_state_prompt(game, self.player_id)
 
-        logger.info(f"ReactPlayer {self.player_id} starting turn {game.turn}")
+        logger.info(f"PythonReactAgent {self.player_id} starting turn {game.turn}")
         logger.debug(f"[USER] Game state:\n{formatted_state}")
 
         # Run agent loop (invokes self.agent which was created in __init__)
@@ -381,7 +392,7 @@ class ReactPlayer:
 
         # Log orders
         logger.info(
-            f"ReactPlayer {self.player_id} returned {len(orders)} orders for turn {game.turn}"
+            f"PythonReactAgent {self.player_id} returned {len(orders)} orders for turn {game.turn}"
         )
         for order in orders:
             logger.info(

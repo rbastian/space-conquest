@@ -11,6 +11,7 @@ This module provides comprehensive strategic analysis across multiple dimensions
 
 from ..models.game import Game
 from ..models.star import Star
+from .game_stage import calculate_game_stage
 
 
 def calculate_strategic_metrics(game: Game, player_id: str, turn: int) -> dict:
@@ -44,8 +45,12 @@ def calculate_strategic_metrics(game: Game, player_id: str, turn: int) -> dict:
     garrison_metrics = _calculate_garrison_metrics(game, player_id, opponent_id, spatial_metrics)
     territory_metrics = _calculate_territory_metrics(game, player_id, opponent_id, spatial_metrics)
 
+    # Calculate game stage
+    game_stage = calculate_game_stage(game, player_id)
+
     return {
         "turn": turn,
+        "game_stage": game_stage,
         "spatial_awareness": spatial_metrics,
         "expansion": expansion_metrics,
         "resources": resource_metrics,
@@ -237,8 +242,14 @@ def _calculate_garrison_metrics(
         round(home_star_garrison / total_ships * 100, 2) if total_ships > 0 else 0.0
     )
 
-    # Find nearest enemy fleet
-    opponent_fleets = [f for f in game.fleets if f.owner == opponent_id]
+    # Find nearest VISIBLE enemy fleet (respect fog of war)
+    # A fleet is visible if its destination or origin star has been visited
+    opponent_fleets = [
+        f
+        for f in game.fleets
+        if f.owner == opponent_id
+        and (f.dest in player.visited_stars or f.origin in player.visited_stars)
+    ]
     home_coords = spatial_metrics["llm_home_coords"]
 
     nearest_enemy_fleet_distance = None

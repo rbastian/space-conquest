@@ -114,7 +114,7 @@ def display_player_status(player_id: str, data: dict) -> None:
         print("\n🎯 Opponent home: Not yet found")
 
 
-def monitor_once(seed: str = None) -> None:
+def monitor_once(seed: str | None = None) -> None:
     """Monitor game status once."""
     if seed:
         log_pattern = f"logs/game_seed{seed}_*_strategic.jsonl"
@@ -150,7 +150,7 @@ def monitor_once(seed: str = None) -> None:
     print(f"\n{'=' * 60}\n")
 
 
-def monitor_continuous(seed: str = None, interval: int = 5) -> None:
+def monitor_continuous(seed: str | None = None, interval: int = 5) -> None:
     """Monitor game continuously."""
     print("Starting live monitoring (Ctrl+C to stop)...")
     print(f"Refresh interval: {interval} seconds\n")

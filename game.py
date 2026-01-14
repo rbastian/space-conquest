@@ -13,6 +13,8 @@ from src.agent.graph_react_player import GraphReactPlayer
 from src.agent.langgraph_player import LangGraphPlayer
 from src.agent.llm_factory import LLMFactory
 from src.agent.prompts import get_system_prompt
+from src.agent.python_react_agent import PythonReactAgent
+from src.agent.python_react_tools import create_python_react_tools
 from src.agent.react_player import ReactPlayer
 from src.agent.react_tools import create_react_tools
 from src.engine.map_generator import generate_map
@@ -66,6 +68,14 @@ class GameOrchestrator:
                 or getattr(p2_controller.llm, "model", None)  # ChatAnthropic, ChatOllama
                 or getattr(p2_controller.llm, "model_name", None)  # ChatOpenAI
                 or "graph-react-agent"
+            )
+        elif isinstance(p2_controller, PythonReactAgent):
+            # PythonReactAgent: always uses raw LLM
+            self.game.p2_model_id = (
+                getattr(p2_controller.llm, "model_id", None)  # ChatBedrockConverse
+                or getattr(p2_controller.llm, "model", None)  # ChatAnthropic, ChatOllama
+                or getattr(p2_controller.llm, "model_name", None)  # ChatOpenAI
+                or "python-react-agent"
             )
         elif isinstance(p2_controller, ReactPlayer):
             # ReactPlayer: always uses raw LLM
@@ -293,25 +303,30 @@ Examples:
         help="Enable debug logging and verbose AI reasoning (shows AI's thought process, uses more tokens/costs more)",
     )
     parser.add_argument(
+        "--log-decisions",
+        action="store_true",
+        help="Enable detailed decision logging for AI agents (logs all tool calls, calculations, and orders to JSONL)",
+    )
+    parser.add_argument(
         "--tui",
         action="store_true",
         help="Use terminal user interface (TUI) for human players instead of basic text mode",
     )
     parser.add_argument(
         "--agent",
-        choices=["langgraph", "react", "graph-react"],
+        choices=["langgraph", "react", "graph-react", "python-react"],
         default="langgraph",
-        help="Agent type: langgraph=StateGraph (default), react=ReAct pattern (simpler), graph-react=Structured decision workflow with LangGraph. Used for hvl mode and as default for lvl mode.",
+        help="Agent type: langgraph=StateGraph (default), react=ReAct pattern (simpler), graph-react=Structured decision workflow with LangGraph, python-react=ReAct with Python REPL tool. Used for hvl mode and as default for lvl mode.",
     )
     parser.add_argument(
         "--p1-agent",
-        choices=["langgraph", "react", "graph-react"],
+        choices=["langgraph", "react", "graph-react", "python-react"],
         default=None,
         help="Player 1 agent type for lvl mode (overrides --agent for p1). Defaults to --agent if not specified.",
     )
     parser.add_argument(
         "--p2-agent",
-        choices=["langgraph", "react", "graph-react"],
+        choices=["langgraph", "react", "graph-react", "python-react"],
         default=None,
         help="Player 2 agent type for hvl and lvl modes (overrides --agent for p2). Defaults to --agent if not specified.",
     )
@@ -462,6 +477,34 @@ Examples:
                     tools=tools,
                     system_prompt=system_prompt,
                     verbose=args.debug,
+                    enable_decision_logging=args.log_decisions,
+                )
+            elif args.p2_agent == "python-react":
+                # PythonReactAgent pattern with Python REPL tool
+                llm = create_llm_for_agent(
+                    args.provider,
+                    args.model,
+                    "us-east-1",
+                    args.api_base,
+                    args.reasoning_effort,
+                )
+
+                # Create tools with game state reference (validate_orders + python_repl)
+                tools = create_python_react_tools(game, "p2")
+
+                # Get specialized system prompt for Python REPL agent
+                from src.agent.prompts import get_python_react_system_prompt
+
+                system_prompt = get_python_react_system_prompt()
+
+                p2 = PythonReactAgent(
+                    llm=llm,
+                    game=game,
+                    player_id="p2",
+                    tools=tools,
+                    system_prompt=system_prompt,
+                    verbose=args.debug,
+                    enable_decision_logging=args.log_decisions,
                 )
             else:  # react
                 # ReactPlayer pattern with dependency injection
@@ -492,6 +535,7 @@ Examples:
                     tools=tools,
                     system_prompt=system_prompt,
                     verbose=args.debug,
+                    enable_decision_logging=args.log_decisions,
                 )
 
             print("LLM player initialized successfully!")
@@ -554,6 +598,22 @@ Examples:
                     tools=tools1,
                     system_prompt=system_prompt1,
                     verbose=args.debug,
+                    enable_decision_logging=args.log_decisions,
+                )
+            elif args.p1_agent == "python-react":
+                tools1 = create_python_react_tools(game, "p1")
+                from src.agent.prompts import get_python_react_system_prompt
+
+                system_prompt1 = get_python_react_system_prompt()
+
+                p1 = PythonReactAgent(
+                    llm=llm1,
+                    game=game,
+                    player_id="p1",
+                    tools=tools1,
+                    system_prompt=system_prompt1,
+                    verbose=args.debug,
+                    enable_decision_logging=args.log_decisions,
                 )
             else:  # react
                 tools1 = create_react_tools(game, "p1")
@@ -572,6 +632,7 @@ Examples:
                     tools=tools1,
                     system_prompt=system_prompt1,
                     verbose=args.debug,
+                    enable_decision_logging=args.log_decisions,
                 )
 
             # Create player 2 based on --p2-agent
@@ -601,6 +662,22 @@ Examples:
                     tools=tools2,
                     system_prompt=system_prompt2,
                     verbose=args.debug,
+                    enable_decision_logging=args.log_decisions,
+                )
+            elif args.p2_agent == "python-react":
+                tools2 = create_python_react_tools(game, "p2")
+                from src.agent.prompts import get_python_react_system_prompt
+
+                system_prompt2 = get_python_react_system_prompt()
+
+                p2 = PythonReactAgent(
+                    llm=llm2,
+                    game=game,
+                    player_id="p2",
+                    tools=tools2,
+                    system_prompt=system_prompt2,
+                    verbose=args.debug,
+                    enable_decision_logging=args.log_decisions,
                 )
             else:  # react
                 tools2 = create_react_tools(game, "p2")
@@ -619,6 +696,7 @@ Examples:
                     tools=tools2,
                     system_prompt=system_prompt2,
                     verbose=args.debug,
+                    enable_decision_logging=args.log_decisions,
                 )
 
             print("Both LLM players initialized successfully!")

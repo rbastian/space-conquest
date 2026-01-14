@@ -44,6 +44,7 @@ class DecisionState(TypedDict):
     # Tools and LLM (injected)
     tools: dict  # Map of tool name to tool function
     llm: object  # LLM instance
+    decision_logger: object | None  # DecisionLogger instance (optional)
 
     # Node 1: Victory/Defeat Check outputs
     immediate_victory_possible: bool
@@ -77,6 +78,32 @@ class DecisionState(TypedDict):
 
     # Tool tracking
     tool_calls_made: Annotated[list[str], add]  # Tool names called across all nodes
+
+
+def _log_tool_call_to_decision_logger(
+    state: DecisionState,
+    tool_name: str,
+    tool_input: dict,
+    tool_output: dict | str,
+    success: bool = True,
+) -> None:
+    """Log a tool call to the decision logger if enabled.
+
+    Args:
+        state: Decision state containing decision_logger
+        tool_name: Name of the tool called
+        tool_input: Input arguments to the tool
+        tool_output: Output from the tool
+        success: Whether the tool call succeeded
+    """
+    decision_logger = state.get("decision_logger")
+    if decision_logger:
+        decision_logger.log_tool_call(
+            tool_name=tool_name,
+            tool_input=tool_input,
+            tool_output=str(tool_output),
+            success=success,
+        )
 
 
 def _extract_json_from_content(content: str | list) -> dict | None:
@@ -232,6 +259,11 @@ Output your analysis as JSON:
                         state["tool_calls_made"] = []
                     state["tool_calls_made"].append(tool_name)
 
+                    # Log to decision logger
+                    _log_tool_call_to_decision_logger(
+                        state, tool_name, tool_args, result, success=True
+                    )
+
                     tool_results.append(
                         {
                             "type": "tool_result",
@@ -242,11 +274,18 @@ Output your analysis as JSON:
 
                 except Exception as e:
                     logger.error(f"Tool execution failed: {e}")
+                    error_result = {"error": str(e)}
+
+                    # Log to decision logger
+                    _log_tool_call_to_decision_logger(
+                        state, tool_name, tool_args, error_result, success=False
+                    )
+
                     tool_results.append(
                         {
                             "type": "tool_result",
                             "tool_use_id": tool_id,
-                            "content": json.dumps({"error": str(e)}),
+                            "content": json.dumps(error_result),
                         }
                     )
 
@@ -383,6 +422,11 @@ Output as JSON:
                         state["tool_calls_made"] = []
                     state["tool_calls_made"].append(tool_name)
 
+                    # Log to decision logger
+                    _log_tool_call_to_decision_logger(
+                        state, tool_name, tool_args, result, success=True
+                    )
+
                     tool_results.append(
                         {
                             "type": "tool_result",
@@ -393,11 +437,18 @@ Output as JSON:
 
                 except Exception as e:
                     logger.error(f"Tool execution failed: {e}")
+                    error_result = {"error": str(e)}
+
+                    # Log to decision logger
+                    _log_tool_call_to_decision_logger(
+                        state, tool_name, tool_args, error_result, success=False
+                    )
+
                     tool_results.append(
                         {
                             "type": "tool_result",
                             "tool_use_id": tool_id,
-                            "content": json.dumps({"error": str(e)}),
+                            "content": json.dumps(error_result),
                         }
                     )
 
@@ -528,6 +579,11 @@ Output as JSON:
                         state["tool_calls_made"] = []
                     state["tool_calls_made"].append(tool_name)
 
+                    # Log to decision logger
+                    _log_tool_call_to_decision_logger(
+                        state, tool_name, tool_args, result, success=True
+                    )
+
                     tool_results.append(
                         {
                             "type": "tool_result",
@@ -538,11 +594,18 @@ Output as JSON:
 
                 except Exception as e:
                     logger.error(f"Tool execution failed: {e}")
+                    error_result = {"error": str(e)}
+
+                    # Log to decision logger
+                    _log_tool_call_to_decision_logger(
+                        state, tool_name, tool_args, error_result, success=False
+                    )
+
                     tool_results.append(
                         {
                             "type": "tool_result",
                             "tool_use_id": tool_id,
-                            "content": json.dumps({"error": str(e)}),
+                            "content": json.dumps(error_result),
                         }
                     )
 
@@ -663,6 +726,11 @@ Output as JSON:
                         state["tool_calls_made"] = []
                     state["tool_calls_made"].append(tool_name)
 
+                    # Log to decision logger
+                    _log_tool_call_to_decision_logger(
+                        state, tool_name, tool_args, result, success=True
+                    )
+
                     tool_results.append(
                         {
                             "type": "tool_result",
@@ -673,11 +741,18 @@ Output as JSON:
 
                 except Exception as e:
                     logger.error(f"Tool execution failed: {e}")
+                    error_result = {"error": str(e)}
+
+                    # Log to decision logger
+                    _log_tool_call_to_decision_logger(
+                        state, tool_name, tool_args, error_result, success=False
+                    )
+
                     tool_results.append(
                         {
                             "type": "tool_result",
                             "tool_use_id": tool_id,
-                            "content": json.dumps({"error": str(e)}),
+                            "content": json.dumps(error_result),
                         }
                     )
 
@@ -820,6 +895,11 @@ Please validate these orders and output the final valid orders as a JSON array."
                         state["tool_calls_made"] = []
                     state["tool_calls_made"].append(tool_name)
 
+                    # Log to decision logger
+                    _log_tool_call_to_decision_logger(
+                        state, tool_name, tool_args, result, success=True
+                    )
+
                     # Store validation results
                     if tool_name == "validate_orders":
                         validation_results = result
@@ -834,11 +914,18 @@ Please validate these orders and output the final valid orders as a JSON array."
 
                 except Exception as e:
                     logger.error(f"Tool execution failed: {e}")
+                    error_result = {"error": str(e)}
+
+                    # Log to decision logger
+                    _log_tool_call_to_decision_logger(
+                        state, tool_name, tool_args, error_result, success=False
+                    )
+
                     tool_results.append(
                         {
                             "type": "tool_result",
                             "tool_use_id": tool_id,
-                            "content": json.dumps({"error": str(e)}),
+                            "content": json.dumps(error_result),
                         }
                     )
 
@@ -988,6 +1075,7 @@ class GraphReactPlayer:
         tools: list,
         system_prompt: str,
         verbose: bool = False,
+        enable_decision_logging: bool = False,
     ):
         """Initialize GraphReactPlayer with injected dependencies.
 
@@ -998,6 +1086,7 @@ class GraphReactPlayer:
             tools: List of @tool decorated functions (from react_tools.py)
             system_prompt: System prompt text (not used by graph nodes)
             verbose: Enable verbose logging
+            enable_decision_logging: Enable detailed decision logging
         """
         self.llm = llm
         self.game = game
@@ -1005,6 +1094,7 @@ class GraphReactPlayer:
         self.tools = tools
         self.system_prompt = system_prompt
         self.verbose = verbose
+        self.enable_decision_logging = enable_decision_logging
 
         # Create tools map for easy access
         self.tools_map = {tool.name: tool for tool in tools}
@@ -1014,6 +1104,7 @@ class GraphReactPlayer:
 
         # Per-turn state
         self.strategic_logger = None
+        self.decision_logger = None
 
         # Tool usage tracking
         self._tool_usage_counts: dict[str, int] = {
@@ -1047,12 +1138,23 @@ class GraphReactPlayer:
             List of Order objects for this turn
         """
         from ..agent.prompts import format_game_state_prompt
+        from ..analysis.decision_logger import DecisionLogger
+
+        # Initialize decision logger if enabled
+        if self.enable_decision_logging:
+            if self.decision_logger is None:
+                game_id = f"seed{game.seed}_{self.player_id}_turn{game.turn}"
+                self.decision_logger = DecisionLogger(game_id)
+            from ..analysis.game_stage import calculate_game_stage
+
+            game_stage = calculate_game_stage(game, self.player_id)
+            self.decision_logger.start_turn(game.turn, game_stage)
 
         # Format game state
         game_state_json = format_game_state_prompt(game, self.player_id)
 
         logger.info(f"GraphReactPlayer {self.player_id} starting turn {game.turn}")
-        logger.info(f"[USER] Game state:\n{game_state_json}")
+        logger.debug(f"[USER] Game state:\n{game_state_json}")
 
         # Initialize state
         initial_state: DecisionState = {
@@ -1082,6 +1184,10 @@ class GraphReactPlayer:
             "skip_to_validation": False,
         }
 
+        # Pass decision logger to state if enabled
+        if self.enable_decision_logging and self.decision_logger:
+            initial_state["decision_logger"] = self.decision_logger
+
         # Run graph
         try:
             final_state = self.graph.invoke(initial_state)
@@ -1106,6 +1212,21 @@ class GraphReactPlayer:
             logger.info(
                 f"  Order: {order.ships} ships from {order.from_star} to {order.to_star} ({order.rationale})"
             )
+
+        # Log to decision logger if enabled
+        if self.enable_decision_logging and self.decision_logger:
+            # Convert orders to dict format for logging
+            orders_dict = [
+                {
+                    "from": o.from_star,
+                    "to": o.to_star,
+                    "ships": o.ships,
+                    "rationale": o.rationale,
+                }
+                for o in orders
+            ]
+            self.decision_logger.log_orders(orders_dict)
+            self.decision_logger.end_turn()
 
         # Log strategic metrics
         self._log_strategic_metrics(game)
@@ -1158,7 +1279,8 @@ class GraphReactPlayer:
         """
         try:
             if self.strategic_logger is None:
-                self.strategic_logger = StrategicLogger(self.player_id)
+                game_id = f"seed{game.seed}_{self.player_id}_turn{game.turn}"
+                self.strategic_logger = StrategicLogger(game_id)
 
             metrics = calculate_strategic_metrics(game, self.player_id, game.turn)
             self.strategic_logger.log_turn(metrics)
@@ -1175,7 +1297,7 @@ class GraphReactPlayer:
         return self._tool_usage_counts.copy()
 
     def close(self):
-        """Cleanup strategic logger and log tool usage statistics."""
+        """Cleanup strategic logger, decision logger, and log tool usage statistics."""
         # Log tool usage statistics
         logger.info(f"Tool usage statistics for {self.player_id}:")
         for tool_name, count in self._tool_usage_counts.items():
@@ -1184,3 +1306,7 @@ class GraphReactPlayer:
         # Cleanup strategic logger
         if self.strategic_logger:
             self.strategic_logger.close()
+
+        # Cleanup decision logger
+        if self.decision_logger:
+            self.decision_logger.close()
