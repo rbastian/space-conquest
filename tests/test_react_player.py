@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from src.agent.llm_factory import LLMFactory
 from src.agent.react_player import ReactPlayer
@@ -665,6 +665,98 @@ class TestReactPlayer:
         orders = player._extract_orders_from_messages(messages)
 
         assert len(orders) == 0
+
+    def test_extract_orders_skips_earlier_bracketed_prose(self, player):
+        """Test extraction picks the orders array, not an earlier bracketed prose span."""
+        orders_data = [{"from": "A", "to": "B", "ships": 5, "rationale": "attack"}]
+        content = (
+            "Let me think about this [see analysis] before deciding.\n\n"
+            "Final orders:\n" + json.dumps(orders_data)
+        )
+        messages = [AIMessage(content=content)]
+
+        orders = player._extract_orders_from_messages(messages)
+
+        assert len(orders) == 1
+        assert orders[0].from_star == "A"
+        assert orders[0].to_star == "B"
+        assert orders[0].ships == 5
+
+    def test_extract_orders_skips_earlier_reasoning_json_array(self, player):
+        """Test extraction picks the LAST order-shaped array over an earlier reasoning array."""
+        reasoning_array = [1, 2, 3]
+        orders_data = [{"from": "A", "to": "B", "ships": 7, "rationale": "attack"}]
+        content = (
+            "Reasoning steps: " + json.dumps(reasoning_array) + "\n\n"
+            "Orders: " + json.dumps(orders_data)
+        )
+        messages = [AIMessage(content=content)]
+
+        orders = player._extract_orders_from_messages(messages)
+
+        assert len(orders) == 1
+        assert orders[0].ships == 7
+
+    def test_extract_orders_list_content_blocks(self, player):
+        """Test extraction handles Anthropic-style list content blocks."""
+        orders_data = [{"from": "A", "to": "B", "ships": 2, "rationale": "scout"}]
+        content = [
+            {"type": "reasoning_content", "reasoning_content": {"text": "[thinking...]"}},
+            {"type": "text", "text": "Here are my orders:\n" + json.dumps(orders_data)},
+        ]
+        messages = [AIMessage(content=content)]
+
+        orders = player._extract_orders_from_messages(messages)
+
+        assert len(orders) == 1
+        assert orders[0].from_star == "A"
+        assert orders[0].ships == 2
+
+    def test_extract_orders_empty_list_with_list_content_blocks(self, player):
+        """Test that a bare [] pass result still works with list-form content."""
+        content = [{"type": "text", "text": "No good moves this turn: []"}]
+        messages = [AIMessage(content=content)]
+
+        orders = player._extract_orders_from_messages(messages)
+
+        assert len(orders) == 0
+
+    def test_extract_orders_empty_list_ignored_when_order_shaped_present(self, player):
+        """Test that an earlier bare [] does not win over a later order-shaped array."""
+        orders_data = [{"from": "A", "to": "B", "ships": 4, "rationale": "attack"}]
+        content = "No defensive moves needed: []\n\nAttack orders: " + json.dumps(orders_data)
+        messages = [AIMessage(content=content)]
+
+        orders = player._extract_orders_from_messages(messages)
+
+        assert len(orders) == 1
+        assert orders[0].ships == 4
+
+    def test_trim_preserves_initial_game_state_message(self, player):
+        """Test that trimming a long history always preserves the initial game-state message."""
+        game_state_message = HumanMessage(content="GAME STATE: turn 1 ...")
+
+        # Build a long, alternating AI/Tool history (> MAX_MESSAGES)
+        history = [game_state_message]
+        for i in range(15):
+            history.append(
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "calculate_distance", "args": {}, "id": f"call_{i}"}],
+                )
+            )
+            history.append(ToolMessage(content=f"result {i}", tool_call_id=f"call_{i}"))
+
+        assert len(history) > 20
+
+        trimmed = player._trim_message_history(history)
+
+        # First message must always be the original game-state HumanMessage
+        assert trimmed[0] is game_state_message
+        assert isinstance(trimmed[0], HumanMessage)
+
+        # No orphaned ToolMessage at the head of the tail (right after the game-state message)
+        assert not isinstance(trimmed[1], ToolMessage)
 
     def test_agent_loop_termination(self, player, game):
         """Test that agent loop terminates when no tool calls requested."""
