@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "space_conquest",
+  "project_id": "58c6a2e2-aaa1-4a66-9ca5-e7b479e91107"
+}

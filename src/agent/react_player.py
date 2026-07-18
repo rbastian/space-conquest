@@ -6,7 +6,6 @@ The agent returns orders as JSON in its final text response.
 
 import json
 import logging
-import re
 
 from langchain.agents import create_agent
 from langchain_core.messages import (
@@ -14,7 +13,7 @@ from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
     SystemMessage,
-    trim_messages,
+    ToolMessage,
 )
 
 from ..analysis import calculate_strategic_metrics
@@ -26,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 # Message history limits
 MAX_MESSAGES = 20
-MAX_TOKENS = 8000
 
 
 class ReactPlayer:
@@ -128,15 +126,8 @@ class ReactPlayer:
         for iteration in range(1, max_iterations + 1):
             logger.info(f"Agent iteration {iteration}/{max_iterations}")
 
-            # Trim history if needed
-            if len(message_history) > MAX_MESSAGES:
-                message_history = trim_messages(
-                    message_history,
-                    max_tokens=MAX_TOKENS,
-                    strategy="last",
-                    token_counter=len,
-                    start_on="human",
-                )
+            # Trim history if needed, always preserving the initial game-state message.
+            message_history = self._trim_message_history(message_history)
 
             try:
                 # Invoke agent (created in __init__)
@@ -190,6 +181,32 @@ class ReactPlayer:
         orders = self._extract_orders_from_messages(message_history)
 
         return message_history, orders
+
+    @staticmethod
+    def _trim_message_history(message_history: list[BaseMessage]) -> list[BaseMessage]:
+        """Deterministically trim message history, keeping it bounded.
+
+        Always preserves message_history[0] (the initial game-state HumanMessage,
+        the agent's only source of truth for the turn) plus the most recent
+        messages. The tail's start index is advanced past any leading
+        ToolMessage entries so a tool_result is never left without its
+        preceding AIMessage tool_call (Anthropic/Bedrock reject orphaned tool
+        results).
+
+        Args:
+            message_history: Full message history so far
+
+        Returns:
+            Trimmed message history (unchanged if within MAX_MESSAGES)
+        """
+        if len(message_history) <= MAX_MESSAGES:
+            return message_history
+
+        game_state_message = message_history[0]
+        tail = message_history[1:][-(MAX_MESSAGES - 1) :]
+        while tail and isinstance(tail[0], ToolMessage):
+            tail = tail[1:]
+        return [game_state_message, *tail]
 
     def _log_iteration_messages(self, messages: list[BaseMessage]) -> None:
         """Extract and log information from new messages in this iteration.
@@ -250,8 +267,6 @@ class ReactPlayer:
         Args:
             messages: Messages to extract tool calls from
         """
-        from langchain_core.messages import ToolMessage
-
         if not self.decision_logger:
             return
 
@@ -288,11 +303,72 @@ class ReactPlayer:
                         success=success,
                     )
 
+    @staticmethod
+    def _content_to_text(content: object) -> str:
+        """Normalize AIMessage.content into a plain string.
+
+        content may be a plain str, or (Anthropic-style) a list of content
+        blocks where each block is either a plain str or a dict. Only dict
+        blocks with type == "text" contribute text (tool_use/reasoning blocks
+        are ignored here since orders are only ever emitted as visible text).
+        """
+        if isinstance(content, str):
+            return content
+
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, str):
+                    parts.append(block)
+                elif isinstance(block, dict) and block.get("type") == "text":
+                    parts.append(block.get("text", ""))
+            return "\n".join(parts)
+
+        return ""
+
+    @staticmethod
+    def _is_order_shaped(candidate: object) -> bool:
+        """Return True if candidate is a non-empty list of order-like dicts."""
+        return (
+            isinstance(candidate, list)
+            and len(candidate) > 0
+            and all(
+                isinstance(item, dict) and {"from", "to", "ships"} <= item.keys()
+                for item in candidate
+            )
+        )
+
+    def _find_json_array_candidates(self, text: str) -> list[list]:
+        """Scan text for every JSON array, trying `[` at each index.
+
+        Using json.JSONDecoder().raw_decode at each '[' correctly handles
+        nested brackets (unlike a single non-greedy regex, which would only
+        ever find the first bracketed span in the text).
+        """
+        decoder = json.JSONDecoder()
+        candidates = []
+        for idx, ch in enumerate(text):
+            if ch != "[":
+                continue
+            try:
+                candidate, _end = decoder.raw_decode(text, idx)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(candidate, list):
+                candidates.append(candidate)
+        return candidates
+
     def _extract_orders_from_messages(self, messages: list[BaseMessage]) -> list[Order]:
         """Extract orders from final AI message.
 
         The agent's final response should contain JSON orders like:
         [{"from": "A", "to": "B", "ships": 10, "rationale": "attack"}]
+
+        Scans for ALL JSON arrays in the message (there may be earlier
+        bracketed prose, reasoning JSON, etc.) and picks the last order-shaped
+        candidate, since final orders conventionally come last. A bare `[]`
+        is accepted as a valid "pass" result, but only when no order-shaped
+        candidate is present.
 
         Args:
             messages: Message history from agent loop
@@ -302,44 +378,43 @@ class ReactPlayer:
         """
         # Find last AIMessage with content
         for msg in reversed(messages):
-            if isinstance(msg, AIMessage) and msg.content:
-                content = msg.content
+            if not isinstance(msg, AIMessage) or not msg.content:
+                continue
 
-                # Try to extract JSON array from content
-                # Look for [ ... ] pattern
-                json_match = re.search(r"\[[\s\S]*?\]", content)
-                if json_match:
-                    try:
-                        orders_data = json.loads(json_match.group())
+            content = self._content_to_text(msg.content)
+            if not content:
+                continue
 
-                        # Validate it's a list
-                        if not isinstance(orders_data, list):
-                            logger.error(f"Extracted JSON is not a list: {type(orders_data)}")
-                            continue
+            candidates = self._find_json_array_candidates(content)
+            order_shaped = [c for c in candidates if self._is_order_shaped(c)]
 
-                        # Convert to Order objects
-                        orders = []
-                        for order_dict in orders_data:
-                            try:
-                                orders.append(
-                                    Order(
-                                        from_star=order_dict["from"],
-                                        to_star=order_dict["to"],
-                                        ships=order_dict["ships"],
-                                        rationale=order_dict.get("rationale", ""),
-                                    )
-                                )
-                            except (KeyError, ValueError) as e:
-                                logger.error(f"Invalid order dict {order_dict}: {e}")
-                                continue
+            if order_shaped:
+                orders_data = order_shaped[-1]
+            elif any(c == [] for c in candidates):
+                orders_data = []
+            else:
+                # No valid orders array in this message - try an earlier one
+                continue
 
-                        logger.info(f"Extracted {len(orders)} orders from AI message")
+            # Convert to Order objects
+            orders = []
+            for order_dict in orders_data:
+                try:
+                    orders.append(
+                        Order(
+                            from_star=order_dict["from"],
+                            to_star=order_dict["to"],
+                            ships=order_dict["ships"],
+                            rationale=order_dict.get("rationale", ""),
+                        )
+                    )
+                except (KeyError, ValueError) as e:
+                    logger.error(f"Invalid order dict {order_dict}: {e}")
+                    continue
 
-                        return orders
+            logger.info(f"Extracted {len(orders)} orders from AI message")
 
-                    except json.JSONDecodeError as e:
-                        logger.error(f"Failed to parse JSON from AI message: {e}")
-                        logger.error(f"Content: {json_match.group()}")
+            return orders
 
         logger.warning("No valid orders found in AI messages")
         return []
