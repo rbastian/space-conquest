@@ -63,3 +63,6 @@ logs/
 .dolt/
 *.db
 .beads-credential-key
+
+# bd hook lock
+.beads.gate.lock
