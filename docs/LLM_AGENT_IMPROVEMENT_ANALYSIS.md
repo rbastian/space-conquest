@@ -205,9 +205,7 @@ def calculate_roi_for_target(target_star_id: str) -> dict:
 **Tool Gap 4: Fleet Coordinator**
 ```python
 def coordinate_multi_star_assault(
-    target_star_id: str,
-    required_force: int,
-    source_stars: list[str]
+    target_star_id: str, required_force: int, source_stars: list[str]
 ) -> dict:
     """Plan coordinated assault from multiple stars.
 
@@ -708,7 +706,7 @@ enemy_intel: {
     "estimated_production": "8-12 RU/turn",  # Range based on known stars
     "last_fleet_size": 10,  # Largest fleet seen in recent combats
     "threat_level": "MEDIUM",  # Based on proximity and strength
-    "likely_next_move": "EXPAND_EAST"  # Based on pattern recognition
+    "likely_next_move": "EXPAND_EAST",  # Based on pattern recognition
 }
 ```
 
@@ -726,7 +724,7 @@ victory_status: {
     "force_required": 10,  # Using simulate_combat
     "force_available": 12,  # Ships I can send
     "victory_feasible": "YES_IN_3_TURNS",  # Can I win soon?
-    "recommended_strike_turn": 18  # Optimal timing for assault
+    "recommended_strike_turn": 18,  # Optimal timing for assault
 }
 ```
 
@@ -744,7 +742,7 @@ defensive_status: {
     "max_enemy_strike": 6,  # Largest single attack enemy could launch
     "home_defense_adequate": true,  # home_garrison > max_enemy_strike
     "recommended_home_garrison": 8,  # 1.5x max threat
-    "should_recall_fleets": false
+    "should_recall_fleets": false,
 }
 ```
 
@@ -762,11 +760,12 @@ This is OK, but stars could be sorted by STRATEGIC VALUE:
 def calculate_star_priority(star, game_state):
     score = 0
     score += star.ru * 10  # High RU is valuable
-    score += (10 - distance_from_home)  # Closer is better
+    score += 10 - distance_from_home  # Closer is better
     score -= distance_to_nearest_enemy * 2  # Far from enemy is safer
     if star.owner == "enemy" and distance_from_my_home < 4:
         score += 20  # Eliminate nearby threats
     return score
+
 
 stars.sort(key=lambda s: calculate_star_priority(s, game), reverse=True)
 ```
@@ -820,7 +819,9 @@ else:
 ```python
 def submit_orders(orders, acknowledge_warnings: bool = False):
     if warnings and not acknowledge_warnings:
-        return {"error": "You must review warnings before submitting. Set acknowledge_warnings=True if you've reviewed and accept the risks."}
+        return {
+            "error": "You must review warnings before submitting. Set acknowledge_warnings=True if you've reviewed and accept the risks."
+        }
 ```
 
 #### 6.2 No Order Optimization

@@ -180,11 +180,13 @@ app = FastAPI()
 # Serve frontend
 app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
 
+
 class Order(BaseModel):
     type: str
     ships: int
     from_star: str = Field(alias="from")
     to_star: str = Field(alias="to")
+
 
 @app.get("/api/game/{game_id}/state")
 async def get_game_state(game_id: str):
@@ -195,8 +197,9 @@ async def get_game_state(game_id: str):
         "currentPlayer": game.current_player,
         "stars": [star.to_dict() for star in game.stars],
         "fleets": [fleet.to_dict() for fleet in game.fleets],
-        "events": game.recent_events
+        "events": game.recent_events,
     }
+
 
 @app.post("/api/game/{game_id}/orders")
 async def submit_orders(game_id: str, orders: list[Order]):
@@ -204,15 +207,13 @@ async def submit_orders(game_id: str, orders: list[Order]):
     result = game.process_orders(orders)
     return {"success": result.success, "errors": result.errors}
 
+
 @app.websocket("/ws/game/{game_id}")
 async def game_websocket(websocket: WebSocket, game_id: str):
     await websocket.accept()
     # Send updates when game state changes
     while True:
-        await websocket.send_json({
-            "type": "TURN_UPDATE",
-            "state": get_game_state(game_id)
-        })
+        await websocket.send_json({"type": "TURN_UPDATE", "state": get_game_state(game_id)})
 ```
 
 ## Customization

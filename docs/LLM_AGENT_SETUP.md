@@ -326,18 +326,10 @@ Edit `src/agent/llm_player.py` to adjust:
 from src.agent.llm_player import LLMPlayer
 
 # Use Claude 3 Opus (more powerful, more expensive)
-player = LLMPlayer(
-    "p2",
-    model_id="anthropic.claude-3-opus-20240229-v1:0",
-    region="us-east-1"
-)
+player = LLMPlayer("p2", model_id="anthropic.claude-3-opus-20240229-v1:0", region="us-east-1")
 
 # Use Claude 3 Haiku (faster, cheaper)
-player = LLMPlayer(
-    "p2",
-    model_id="anthropic.claude-3-haiku-20240307-v1:0",
-    region="us-east-1"
-)
+player = LLMPlayer("p2", model_id="anthropic.claude-3-haiku-20240307-v1:0", region="us-east-1")
 ```
 
 ### Verbose Logging

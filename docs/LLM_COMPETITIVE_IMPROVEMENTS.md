@@ -201,27 +201,27 @@
 **Battle Log Schema**:
 ```python
 {
-    'turn': 12,
-    'star': 'K',
-    'star_name': 'Kappa',
-    'attacker': 'opp',  # Perspective-transformed
-    'defender': 'me',
-    'attacker_ships_before': 15,
-    'defender_ships_before': 8,
-    'attacker_survived': 10,
-    'defender_survived': 0,
-    'winner': 'opp'
+    "turn": 12,
+    "star": "K",
+    "star_name": "Kappa",
+    "attacker": "opp",  # Perspective-transformed
+    "defender": "me",
+    "attacker_ships_before": 15,
+    "defender_ships_before": 8,
+    "attacker_survived": 10,
+    "defender_survived": 0,
+    "winner": "opp",
 }
 ```
 
 **Discovery Log Schema**:
 ```python
 {
-    'turn': 5,
-    'star': 'F',
-    'star_name': 'Fomalhaut',
-    'ru': 3,
-    'owner': 'npc'  # At time of discovery
+    "turn": 5,
+    "star": "F",
+    "star_name": "Fomalhaut",
+    "ru": 3,
+    "owner": "npc",  # At time of discovery
 }
 ```
 
