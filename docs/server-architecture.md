@@ -74,6 +74,7 @@ app = FastAPI()
 # In-memory game storage (MVP)
 games: dict[str, GameSession] = {}
 
+
 @dataclass
 class GameSession:
     game: Game
@@ -236,27 +237,24 @@ async def submit_orders(game_id: str, orders: OrdersRequest):
     await broadcast(session, {"type": "AI_THINKING"})
 
     # Get AI orders (this blocks but runs in executor pool)
-    ai_orders = await asyncio.to_thread(
-        session.ai_player.get_orders,
-        session.game
-    )
+    ai_orders = await asyncio.to_thread(session.ai_player.get_orders, session.game)
 
     # Execute turn with both orders
-    all_orders = {
-        session.human_player_id: orders.orders,
-        session.ai_player.player_id: ai_orders
-    }
+    all_orders = {session.human_player_id: orders.orders, session.ai_player.player_id: ai_orders}
 
     # Execute turn phases
     game, events = execute_full_turn(session.game, all_orders)
 
     # Broadcast results
-    await broadcast(session, {
-        "type": "TURN_EXECUTED",
-        "turn": game.turn,
-        "events": events,
-        "state": serialize_state(game)
-    })
+    await broadcast(
+        session,
+        {
+            "type": "TURN_EXECUTED",
+            "turn": game.turn,
+            "events": events,
+            "state": serialize_state(game),
+        },
+    )
 
     return {"accepted": True, "turn": game.turn}
 ```
@@ -357,6 +355,7 @@ from .schemas import CreateGameRequest, OrdersRequest
 # Global session manager
 sessions = GameSessionManager()
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown logic"""
@@ -367,10 +366,12 @@ async def lifespan(app: FastAPI):
     print("Server shutting down...")
     await sessions.cleanup_all()
 
+
 app = FastAPI(lifespan=lifespan)
 
 # Serve frontend static files
 app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+
 
 @app.post("/api/games")
 async def create_game(request: CreateGameRequest):
@@ -379,7 +380,7 @@ async def create_game(request: CreateGameRequest):
         human_player=request.humanPlayer,
         seed=request.seed,
         ai_provider=request.aiProvider,
-        ai_model=request.aiModel
+        ai_model=request.aiModel,
     )
 
     return {
@@ -387,8 +388,9 @@ async def create_game(request: CreateGameRequest):
         "humanPlayer": session.human_player_id,
         "aiPlayer": session.ai_player.player_id,
         "seed": session.game.seed,
-        "state": session.get_state_for_human()
+        "state": session.get_state_for_human(),
     }
+
 
 @app.get("/api/games/{game_id}/state")
 async def get_state(game_id: str):
@@ -402,8 +404,9 @@ async def get_state(game_id: str):
         "turn": session.game.turn,
         "phase": session.phase,
         "state": session.get_state_for_human(),
-        "events": session.get_last_turn_events()
+        "events": session.get_last_turn_events(),
     }
+
 
 @app.post("/api/games/{game_id}/orders")
 async def submit_orders(game_id: str, request: OrdersRequest):
@@ -421,30 +424,23 @@ async def submit_orders(game_id: str, request: OrdersRequest):
     await session.broadcast({"type": "AI_THINKING"})
 
     # Get AI orders (run in thread pool to not block event loop)
-    ai_orders = await asyncio.to_thread(
-        session.ai_player.get_orders,
-        session.game
-    )
+    ai_orders = await asyncio.to_thread(session.ai_player.get_orders, session.game)
 
     # Execute turn
-    events = await session.execute_turn(
-        human_orders=request.orders,
-        ai_orders=ai_orders
-    )
+    events = await session.execute_turn(human_orders=request.orders, ai_orders=ai_orders)
 
     # Broadcast results
-    await session.broadcast({
-        "type": "TURN_EXECUTED",
-        "turn": session.game.turn,
-        "events": events,
-        "state": session.get_state_for_human()
-    })
+    await session.broadcast(
+        {
+            "type": "TURN_EXECUTED",
+            "turn": session.game.turn,
+            "events": events,
+            "state": session.get_state_for_human(),
+        }
+    )
 
-    return {
-        "accepted": True,
-        "turn": session.game.turn,
-        "winner": session.game.winner
-    }
+    return {"accepted": True, "turn": session.game.turn, "winner": session.game.winner}
+
 
 @app.websocket("/ws/games/{game_id}")
 async def websocket_endpoint(websocket: WebSocket, game_id: str):
@@ -459,11 +455,9 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
 
     try:
         # Send initial state
-        await websocket.send_json({
-            "type": "CONNECTED",
-            "gameId": game_id,
-            "state": session.get_state_for_human()
-        })
+        await websocket.send_json(
+            {"type": "CONNECTED", "gameId": game_id, "state": session.get_state_for_human()}
+        )
 
         # Keep connection alive
         while True:
@@ -484,9 +478,11 @@ from src.engine.turn_executor import TurnExecutor
 from src.agent.langgraph_player import LangGraphPlayer
 from src.game_initialization import create_standard_game
 
+
 @dataclass
 class GameSession:
     """Manages one game session (Human vs AI)"""
+
     id: str
     game: Game
     executor: TurnExecutor
@@ -509,10 +505,7 @@ class GameSession:
         """Execute one turn with both players' orders"""
         self.phase = "EXECUTING"
 
-        orders_dict = {
-            self.human_player_id: human_orders,
-            self.ai_player.player_id: ai_orders
-        }
+        orders_dict = {self.human_player_id: human_orders, self.ai_player.player_id: ai_orders}
 
         # Execute turn phases
         game, combat, losses, rebellions = self.executor.execute_pre_turn_logic(self.game)
@@ -521,11 +514,7 @@ class GameSession:
         self.game = game
         self.phase = "AWAITING_ORDERS"
 
-        return {
-            "combat": combat,
-            "rebellions": rebellions,
-            "hyperspaceLosses": losses
-        }
+        return {"combat": combat, "rebellions": rebellions, "hyperspaceLosses": losses}
 
     async def broadcast(self, message: dict):
         """Send message to all connected clients"""

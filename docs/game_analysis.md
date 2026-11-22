@@ -72,7 +72,7 @@ print(f"Games analyzed: {results['total_games']}")
 print(f"Average score: {results['avg_overall_score']:.1f}/100")
 
 # Access dimension averages
-for dim, score in results['avg_dimension_scores'].items():
+for dim, score in results["avg_dimension_scores"].items():
     print(f"{dim}: {score:.1f}/100")
 ```
 
@@ -83,9 +83,9 @@ analyzer = GameAnalyzer("logs/game_abc123_strategic.jsonl")
 
 # Access raw metrics for custom analysis
 for metric in analyzer.metrics:
-    turn = metric['turn']
-    production = metric['resources']['total_production_ru']
-    ratio = metric['resources']['production_ratio']
+    turn = metric["turn"]
+    production = metric["resources"]["total_production_ru"]
+    ratio = metric["resources"]["production_ratio"]
     print(f"Turn {turn}: {production} RU/turn (ratio: {ratio:.2f})")
 ```
 

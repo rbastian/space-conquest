@@ -109,8 +109,18 @@ Each model name brings thematic flavor:
 ```python
 def select_admiral_name(game_seed: int, model_id: str) -> str:
     model_name = extract_model_name(model_id)
-    surnames = ["Krios", "Vex", "Thalion", "Dravin", "Seris",
-                "Korvan", "Nexus", "Rylon", "Thane", "Vorel"]
+    surnames = [
+        "Krios",
+        "Vex",
+        "Thalion",
+        "Dravin",
+        "Seris",
+        "Korvan",
+        "Nexus",
+        "Rylon",
+        "Thane",
+        "Vorel",
+    ]
 
     # Use game seed to deterministically select surname
     rng = Random(game_seed)
@@ -182,6 +192,7 @@ def select_admiral_name(game_seed: int, model_id: str) -> str:
 # At game initialization
 game = Game(seed=42, p1="human", p2_agent=LLMAgent(model="claude-3-5-sonnet-..."))
 game.p2_model_id = "claude-3-5-sonnet-20241022-v1:0"  # Store for display
+
 
 # At display time
 def get_p2_display_name(game: Game) -> str:

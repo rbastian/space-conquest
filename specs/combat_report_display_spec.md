@@ -420,7 +420,7 @@ def handle_simultaneous_arrival(fleet1, fleet2, star):
     return {
         "attacker": primary_attacker,
         "defender": secondary_attacker,
-        "simultaneous": True  # Flag for display logic
+        "simultaneous": True,  # Flag for display logic
     }
 ```
 
@@ -650,7 +650,7 @@ class CombatResult:
     attacker_losses: int
     defender_losses: int
     control_before: Optional[str]  # "p1", "p2", or None
-    control_after: Optional[str]   # "p1", "p2", or None
+    control_after: Optional[str]  # "p1", "p2", or None
     simultaneous: bool = False  # Flag for simultaneous arrival
 ```
 
@@ -658,6 +658,7 @@ class CombatResult:
 ```python
 def transform_combat_for_llm(combat: CombatResult, observing_player: str) -> dict:
     """Transform combat result into LLM-friendly perspective."""
+
     def transform_player_id(player_id: str) -> str:
         if player_id == "npc":
             # NPC treated as opponent placeholder
@@ -672,8 +673,12 @@ def transform_combat_for_llm(combat: CombatResult, observing_player: str) -> dic
         "defender_ships_before": combat.defender_ships_before,
         "attacker_losses": combat.attacker_losses,
         "defender_losses": combat.defender_losses,
-        "control_before": transform_player_id(combat.control_before) if combat.control_before else None,
-        "control_after": transform_player_id(combat.control_after) if combat.control_after else None
+        "control_before": transform_player_id(combat.control_before)
+        if combat.control_before
+        else None,
+        "control_after": transform_player_id(combat.control_after)
+        if combat.control_after
+        else None,
     }
 ```
 
@@ -682,10 +687,7 @@ def transform_combat_for_llm(combat: CombatResult, observing_player: str) -> dic
 **Signature:**
 ```python
 def format_combat_report_for_human(
-    combat: CombatResult,
-    observing_player: str,
-    star_name: str,
-    opponent_name: str
+    combat: CombatResult, observing_player: str, star_name: str, opponent_name: str
 ) -> str:
     """
     Generate human-readable combat report.
@@ -727,17 +729,19 @@ def detect_combat_scenario(combat: CombatResult, observing_player: str) -> str:
         - "npc_conquest_success"
         - "npc_defense_success"
     """
-    is_me_attacker = (combat.attacker_id == observing_player)
-    is_me_defender = (combat.defender_id == observing_player)
-    is_npc_defender = (combat.defender_id == "npc")
+    is_me_attacker = combat.attacker_id == observing_player
+    is_me_defender = combat.defender_id == observing_player
+    is_npc_defender = combat.defender_id == "npc"
 
     # Check for simultaneous arrival
     if combat.simultaneous:
         return "simultaneous_clash"
 
     # Check for mutual destruction
-    if (combat.attacker_losses == combat.attacker_ships_before and
-        combat.defender_losses == combat.defender_ships_before):
+    if (
+        combat.attacker_losses == combat.attacker_ships_before
+        and combat.defender_losses == combat.defender_ships_before
+    ):
         return "mutual_destruction"
 
     # Attacker victory scenarios

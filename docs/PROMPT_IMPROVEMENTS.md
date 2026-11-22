@@ -306,8 +306,8 @@ consolidation_orders.append({"from": "K", "to": home_star, "ships": 5, "rational
 offensive_orders = [
     {"from": "R", "to": "H", "ships": 33, "rationale": "attack"},  # Enemy home star
     {"from": "O", "to": "B", "ships": 18, "rationale": "attack"},  # Key production star
-    {"from": "P", "to": "G", "ships": 6, "rationale": "attack"},   # Secondary target
-    {"from": "S", "to": "F", "ships": 5, "rationale": "expand"}    # Opportunistic expansion
+    {"from": "P", "to": "G", "ships": 6, "rationale": "attack"},  # Secondary target
+    {"from": "S", "to": "F", "ships": 5, "rationale": "expand"},  # Opportunistic expansion
 ]
 
 # Result: Captured 3+ stars in single turn, devastated enemy empire

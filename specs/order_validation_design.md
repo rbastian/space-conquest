@@ -214,25 +214,25 @@ def _process_orders(self, game: Game, orders: Dict[str, List[Order]]) -> Game:
 ```python
 def _log_order_error(self, game: Game, player_id: str, order: Order, error: str):
     """Log individual order failure."""
-    if not hasattr(game, 'order_errors'):
+    if not hasattr(game, "order_errors"):
         game.order_errors = []
-    game.order_errors.append({
-        'turn': game.turn,
-        'player': player_id,
-        'order': {'from': order.from_star, 'to': order.to_star, 'ships': order.ships},
-        'error': error
-    })
+    game.order_errors.append(
+        {
+            "turn": game.turn,
+            "player": player_id,
+            "order": {"from": order.from_star, "to": order.to_star, "ships": order.ships},
+            "error": error,
+        }
+    )
+
 
 def _log_player_order_failure(self, game: Game, player_id: str, error: str):
     """Log when all orders for a player fail validation."""
-    if not hasattr(game, 'order_errors'):
+    if not hasattr(game, "order_errors"):
         game.order_errors = []
-    game.order_errors.append({
-        'turn': game.turn,
-        'player': player_id,
-        'order': 'ALL',
-        'error': error
-    })
+    game.order_errors.append(
+        {"turn": game.turn, "player": player_id, "order": "ALL", "error": error}
+    )
 ```
 
 ### 3.2 Enhance Human Player Error Display
@@ -253,11 +253,12 @@ def get_orders(self, game: Game) -> List[Order]:
             for warning in warnings:
                 print(f"  - {warning}")
             confirm = input("Submit anyway? (y/n): ").strip().lower()
-            if confirm not in ('y', 'yes'):
+            if confirm not in ("y", "yes"):
                 # Let player revise
                 continue
 
     return orders
+
 
 def _check_order_warnings(self, game: Game, orders: List[Order]) -> List[str]:
     """Check for potential issues without blocking submission."""
@@ -274,7 +275,9 @@ def _check_order_warnings(self, game: Game, orders: List[Order]) -> List[str]:
         if star:
             available = star.stationed_ships.get(self.player_id, 0)
             if total > available:
-                warnings.append(f"Over-commitment at {star_id}: {total} ships ordered but only {available} available")
+                warnings.append(
+                    f"Over-commitment at {star_id}: {total} ships ordered but only {available} available"
+                )
 
     return warnings
 ```
@@ -287,21 +290,25 @@ def _check_order_warnings(self, game: Game, orders: List[Order]) -> List[str]:
 ```python
 def display_order_errors(self, game: Game, player_id: str):
     """Display any order errors from the previous turn."""
-    if not hasattr(game, 'order_errors'):
+    if not hasattr(game, "order_errors"):
         return
 
-    player_errors = [e for e in game.order_errors if e['player'] == player_id and e['turn'] == game.turn - 1]
+    player_errors = [
+        e for e in game.order_errors if e["player"] == player_id and e["turn"] == game.turn - 1
+    ]
 
     if player_errors:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("ORDER ERRORS FROM LAST TURN")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         for error in player_errors:
-            if error['order'] == 'ALL':
+            if error["order"] == "ALL":
                 print(f"\nAll orders rejected: {error['error']}")
             else:
-                order = error['order']
-                print(f"\nOrder skipped: {order['ships']} ships from {order['from']} to {order['to']}")
+                order = error["order"]
+                print(
+                    f"\nOrder skipped: {order['ships']} ships from {order['from']} to {order['to']}"
+                )
                 print(f"  Reason: {error['error']}")
         print()
 ```

@@ -39,11 +39,7 @@ The `LangGraphPlayer` is an advanced AI player implementation that uses LangGrap
 Example:
 ```python
 # Turn 5, enemy 4 parsecs away
-prompt = get_system_prompt(
-    game_phase="early",
-    threat_level="high",
-    turn=5
-)
+prompt = get_system_prompt(game_phase="early", threat_level="high", turn=5)
 # → Includes "HIGH THREAT: Enemy nearby. Increase home defenses."
 ```
 
@@ -163,12 +159,7 @@ initial_state = {
 from src.agent import LangGraphPlayer
 
 # Create player
-player = LangGraphPlayer(
-    player_id="p2",
-    provider="bedrock",
-    model="haiku",
-    verbose=False
-)
+player = LangGraphPlayer(player_id="p2", provider="bedrock", model="haiku", verbose=False)
 
 # Get orders for current turn
 orders = player.get_orders(game)
@@ -181,14 +172,11 @@ orders = player.get_orders(game)
 player = LangGraphPlayer(
     provider="anthropic",
     model="claude-3-5-sonnet-20241022",
-    verbose=True  # Show detailed reasoning
+    verbose=True,  # Show detailed reasoning
 )
 
 # Mock mode for testing
-player = LangGraphPlayer(
-    use_mock=True,
-    verbose=False
-)
+player = LangGraphPlayer(use_mock=True, verbose=False)
 ```
 
 ## Configuration Options
@@ -279,10 +267,12 @@ uv run pytest tests/test_agent.py -v
 ```python
 # Old code
 from src.agent import LLMPlayer
+
 player = LLMPlayer("p2", provider="bedrock", model="haiku")
 
 # New code
 from src.agent import LangGraphPlayer
+
 player = LangGraphPlayer("p2", provider="bedrock", model="haiku")
 
 # Interface is identical - no other changes needed!

@@ -141,13 +141,14 @@ The architecture emphasizes:
 @dataclass
 class Star:
     """Represents a star system on the map."""
-    id: str                    # Unique identifier (e.g., "A")
-    name: str                  # Human-readable name (generated from seed)
-    x: int                     # X coordinate (0-11)
-    y: int                     # Y coordinate (0-9)
-    base_ru: int              # Resource units (1-4)
-    owner: Optional[str]      # "p1", "p2", or None (NPC)
-    npc_ships: int            # NPC defender count (initialized to base_ru for NPC stars)
+
+    id: str  # Unique identifier (e.g., "A")
+    name: str  # Human-readable name (generated from seed)
+    x: int  # X coordinate (0-11)
+    y: int  # Y coordinate (0-9)
+    base_ru: int  # Resource units (1-4)
+    owner: Optional[str]  # "p1", "p2", or None (NPC)
+    npc_ships: int  # NPC defender count (initialized to base_ru for NPC stars)
     stationed_ships: Dict[str, int]  # {"p1": 5, "p2": 0}
 ```
 
@@ -161,12 +162,13 @@ class Star:
 @dataclass
 class Fleet:
     """Represents ships in hyperspace transit."""
-    id: str                    # Unique identifier (e.g., "p1-003")
-    owner: str                 # "p1" or "p2"
-    ships: int                 # Ship count
-    origin: str                # Origin star ID
-    dest: str                  # Destination star ID
-    dist_remaining: int        # Turns until arrival
+
+    id: str  # Unique identifier (e.g., "p1-003")
+    owner: str  # "p1" or "p2"
+    ships: int  # Ship count
+    origin: str  # Origin star ID
+    dest: str  # Destination star ID
+    dist_remaining: int  # Turns until arrival
 ```
 
 ### 4.3 Player
@@ -175,11 +177,12 @@ class Fleet:
 @dataclass
 class Player:
     """Player state with fog-of-war knowledge."""
-    id: str                    # "p1" or "p2"
-    home_star: str             # Home star ID
-    known_ru: Dict[str, Optional[int]]        # star_id -> RU (None if unknown)
-    known_control: Dict[str, str]             # star_id -> "me"|"opp"|"npc"|"none"
-    fleets: List[Fleet]        # Player's fleets in transit
+
+    id: str  # "p1" or "p2"
+    home_star: str  # Home star ID
+    known_ru: Dict[str, Optional[int]]  # star_id -> RU (None if unknown)
+    known_control: Dict[str, str]  # star_id -> "me"|"opp"|"npc"|"none"
+    fleets: List[Fleet]  # Player's fleets in transit
 ```
 
 ### 4.4 Order
@@ -188,9 +191,10 @@ class Player:
 @dataclass
 class Order:
     """Represents a movement order submitted by a player."""
-    from_star: str             # Origin star ID
-    to_star: str               # Destination star ID
-    ships: int                 # Number of ships to move (must be > 0)
+
+    from_star: str  # Origin star ID
+    to_star: str  # Destination star ID
+    ships: int  # Number of ships to move (must be > 0)
 ```
 
 **Order Format (JSON):**
@@ -208,16 +212,19 @@ class Order:
 ```python
 class Game:
     """Main game state container."""
-    seed: int                  # RNG seed
-    turn: int                  # Current turn number
-    stars: List[Star]          # All stars
-    fleets: List[Fleet]        # All fleets
-    players: Dict[str, Player] # "p1" and "p2"
-    rng: random.Random         # Seeded RNG instance
-    winner: Optional[str]      # "p1", "p2", "draw", or None
-    turn_history: List[Dict]   # Event log for replay (format: [{"turn": N, "events": [...]}])
+
+    seed: int  # RNG seed
+    turn: int  # Current turn number
+    stars: List[Star]  # All stars
+    fleets: List[Fleet]  # All fleets
+    players: Dict[str, Player]  # "p1" and "p2"
+    rng: random.Random  # Seeded RNG instance
+    winner: Optional[str]  # "p1", "p2", "draw", or None
+    turn_history: List[Dict]  # Event log for replay (format: [{"turn": N, "events": [...]}])
     fleet_counter: Dict[str, int]  # Fleet ID generation: {"p1": 5, "p2": 3}
-    order_errors: Dict[str, List[str]]  # Order validation errors by player: {"p1": ["error1", ...], "p2": [...]}
+    order_errors: Dict[
+        str, List[str]
+    ]  # Order validation errors by player: {"p1": ["error1", ...], "p2": [...]}
 ```
 
 ### 4.6 Game Constants
@@ -232,10 +239,10 @@ NUM_STARS = 16
 HOME_RU = 4
 NPC_RU_RANGE = (1, 3)
 HYPERSPACE_LOSS_PROB = 0.02  # 2% per turn (d50 roll of 1)
-REBELLION_PROB = 0.5          # 50% if under-garrisoned (d6 roll of 4-6)
+REBELLION_PROB = 0.5  # 50% if under-garrisoned (d6 roll of 4-6)
 HOME_DISTANCE_RANGE = (0, 2)  # Chebyshev distance from corners (maintains 7-11 parsec separation)
-MOVE_RATE = 1                 # Parsecs per turn
-RNG_SEED_DEFAULT = 42         # Default seed for testing
+MOVE_RATE = 1  # Parsecs per turn
+RNG_SEED_DEFAULT = 42  # Default seed for testing
 ```
 
 ---
@@ -316,6 +323,7 @@ def phase2_combat_resolution(game: Game) -> Game:
     4. Update star.owner based on combat results
     """
 
+
 def resolve_combat(attacker_ships: int, defender_ships: int) -> CombatResult:
     """
     Deterministic combat resolution:
@@ -361,6 +369,7 @@ def process_rebellions(game: Game) -> Game:
         - star.stationed_ships[owner] = surviving_player_count
     - No production occurs at rebelling stars this turn
     """
+
 
 def process_production(game: Game) -> Game:
     """
@@ -533,6 +542,7 @@ class BedrockClient:
         - Manages conversation context
         """
 
+
 class LangChainAgent:
     """LangChain agent wrapping Bedrock."""
 
@@ -703,7 +713,7 @@ class GameSerializer:
             "fleets": [asdict(f) for f in game.fleets],
             "players": {pid: asdict(p) for pid, p in game.players.items()},
             "winner": game.winner,
-            "turn_history": game.turn_history
+            "turn_history": game.turn_history,
         }
 
     def deserialize(self, data: dict) -> Game:
@@ -718,6 +728,7 @@ def save_game(game: Game, filepath: str):
     serializer = GameSerializer()
     with open(f"state/{filepath}", "w") as f:
         json.dump(serializer.serialize(game), f, indent=2)
+
 
 def load_game(filepath: str) -> Game:
     """Load game from /state directory."""
@@ -741,6 +752,7 @@ def test_combat_player_wins():
     assert result.attacker_losses == 2  # ceil(3/2)
     assert result.defender_losses == 3
 
+
 def test_combat_tie():
     """Equal ships = mutual destruction."""
     result = resolve_combat(attacker_ships=5, defender_ships=5)
@@ -748,12 +760,14 @@ def test_combat_tie():
     assert result.attacker_losses == 5
     assert result.defender_losses == 5
 
+
 # tests/unit/test_movement.py
 def test_hyperspace_loss():
     """2% loss applied per turn."""
     rng = random.Random(42)
     fleet = Fleet(id="f1", owner="p1", ships=100, origin="A", dest="B", dist_remaining=1)
     # Simulate 1000 fleets to verify ~2% loss rate
+
 
 def test_fleet_arrival():
     """Fleets arrive when dist_remaining == 0."""
@@ -770,14 +784,12 @@ def test_fleet_arrival():
 def test_full_turn_execution():
     """Test complete turn with all 5 phases."""
     game = create_test_game(seed=42)
-    orders = {
-        "p1": [Order(from_star="A", to_star="B", ships=2)],
-        "p2": []
-    }
+    orders = {"p1": [Order(from_star="A", to_star="B", ships=2)], "p2": []}
     executor = TurnExecutor()
     game = executor.execute_turn(game, orders)
     assert game.turn == 1
     # Verify fleets created, combat resolved, production applied
+
 
 # tests/integration/test_llm_agent.py
 @pytest.mark.integration
@@ -799,8 +811,9 @@ DETERMINISTIC_SEEDS = {
     "balanced_start": 42,
     "close_home_stars": 123,
     "distant_home_stars": 456,
-    "early_conflict": 789
+    "early_conflict": 789,
 }
+
 
 def create_test_game(seed: int, turn: int = 0) -> Game:
     """Create game with specific seed for testing."""
@@ -1117,34 +1130,20 @@ bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
 
 response = bedrock.converse(
     modelId="anthropic.claude-3-sonnet-20240229-v1:0",
-    messages=[
-        {
-            "role": "user",
-            "content": [{"text": "Your game state observation here"}]
-        }
-    ],
-    inferenceConfig={
-        "maxTokens": 4096,
-        "temperature": 0.7,
-        "topP": 0.9
-    },
+    messages=[{"role": "user", "content": [{"text": "Your game state observation here"}]}],
+    inferenceConfig={"maxTokens": 4096, "temperature": 0.7, "topP": 0.9},
     toolConfig={
         "tools": [
             {
                 "toolSpec": {
                     "name": "get_observation",
                     "description": "Get current game state for Player 2",
-                    "inputSchema": {
-                        "json": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    }
+                    "inputSchema": {"json": {"type": "object", "properties": {}}},
                 }
             }
             # ... other 6 tools
         ]
-    }
+    },
 )
 ```
 
@@ -1173,10 +1172,10 @@ class BedrockClient:
             try:
                 return self.bedrock.converse(...)
             except ClientError as e:
-                if e.response['Error']['Code'] == 'ThrottlingException':
-                    time.sleep(2 ** attempt)
-                elif e.response['Error']['Code'] == 'ModelTimeoutException':
-                    time.sleep(2 ** attempt)
+                if e.response["Error"]["Code"] == "ThrottlingException":
+                    time.sleep(2**attempt)
+                elif e.response["Error"]["Code"] == "ModelTimeoutException":
+                    time.sleep(2**attempt)
                 else:
                     raise
         raise Exception("Max retries exceeded")

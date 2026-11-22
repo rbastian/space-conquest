@@ -14,11 +14,12 @@ Created proper state definitions using TypedDict:
 
 ```python
 class AgentState(TypedDict):
-    messages: list[BaseMessage]          # Conversation history
-    game_context: GameContext            # Strategic state
-    available_tools: list[str]           # Dynamic tool list
-    error_count: int                     # Error tracking
-    last_error: str | None               # Last error message
+    messages: list[BaseMessage]  # Conversation history
+    game_context: GameContext  # Strategic state
+    available_tools: list[str]  # Dynamic tool list
+    error_count: int  # Error tracking
+    last_error: str | None  # Last error message
+
 
 class GameContext(TypedDict):
     turn: int
@@ -120,10 +121,14 @@ def assess_threat_level(game_context: GameContext) -> Literal[...]:
     """Calculate threat based on enemy proximity."""
     nearest = game_context.get("nearest_enemy_distance")
 
-    if nearest is None: return "low"
-    if nearest <= 2: return "critical"
-    if nearest <= 4: return "high"
-    if nearest <= 6: return "medium"
+    if nearest is None:
+        return "low"
+    if nearest <= 2:
+        return "critical"
+    if nearest <= 4:
+        return "high"
+    if nearest <= 6:
+        return "medium"
     return "low"
 ```
 
@@ -213,9 +218,7 @@ class LangGraphPlayer:
 
         # Conditional routing
         workflow.add_conditional_edges(
-            "call_llm",
-            self._should_continue,
-            {"continue": "execute_tools", "end": END}
+            "call_llm", self._should_continue, {"continue": "execute_tools", "end": END}
         )
 
         workflow.add_edge("execute_tools", "call_llm")
@@ -284,10 +287,12 @@ The new implementation is fully backward compatible:
 ```python
 # Old code still works
 from src.agent import LLMPlayer
+
 player = LLMPlayer("p2")
 
 # New code uses same interface
 from src.agent import LangGraphPlayer
+
 player = LangGraphPlayer("p2")
 
 # Both implement: get_orders(game) -> list[Order]

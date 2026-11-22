@@ -69,12 +69,7 @@ system_prompt = get_python_react_system_prompt(verbose=False)
 
 # Create agent
 agent = PythonReactAgent(
-    llm=llm,
-    game=game,
-    player_id="p2",
-    tools=tools,
-    system_prompt=system_prompt,
-    verbose=True
+    llm=llm, game=game, player_id="p2", tools=tools, system_prompt=system_prompt, verbose=True
 )
 
 # Get orders for current turn
@@ -104,8 +99,7 @@ my_stars = [s for s in stars if s.owner == my_player_id]
 uncontrolled = [s for s in stars if s.owner != my_player_id]
 
 for my_star in my_stars:
-    closest = min(uncontrolled,
-                  key=lambda s: max(abs(my_star.x - s.x), abs(my_star.y - s.y)))
+    closest = min(uncontrolled, key=lambda s: max(abs(my_star.x - s.x), abs(my_star.y - s.y)))
     distance = max(abs(my_star.x - closest.x), abs(my_star.y - closest.y))
     print(f"From {my_star.id}: closest target is {closest.id} at {distance} turns")
 ```
@@ -115,6 +109,7 @@ for my_star in my_stars:
 ```python
 import math
 
+
 def calculate_combat(attackers, defenders):
     if attackers > defenders:
         survivors = attackers - math.ceil(defenders / 2)
@@ -123,6 +118,7 @@ def calculate_combat(attackers, defenders):
         return "LOSS", 0
     else:
         return "TIE", 0
+
 
 # Check if attack is viable
 target_garrison = 3  # Assume worst case
@@ -144,8 +140,7 @@ for star in stars:
     if star.owner == my_player_id:
         ships = star.stationed_ships.get(my_player_id, 0)
         if ships > 0:
-            distance = max(abs(star.x - target_star.x),
-                          abs(star.y - target_star.y))
+            distance = max(abs(star.x - target_star.x), abs(star.y - target_star.y))
             arrival_turn = game_turn + distance
             if arrival_turn <= enemy_arrival_turn:
                 print(f"{star.id}: {ships} ships, arrives turn {arrival_turn}")
@@ -156,11 +151,13 @@ for star in stars:
 ```python
 import math
 
+
 def hyperspace_survival(distance):
     if distance <= 0:
         return 1.0
     cumulative_risk = 0.02 * distance * math.log2(distance)
     return 1.0 - cumulative_risk
+
 
 # Compare direct vs multi-hop routes
 direct_distance = 8
@@ -237,11 +234,21 @@ context = {
     "game": game,
     "game_turn": game.turn,
     # Standard library functions
-    "max": max, "min": min, "abs": abs, "sum": sum, "len": len,
-    "sorted": sorted, "enumerate": enumerate, "range": range,
+    "max": max,
+    "min": min,
+    "abs": abs,
+    "sum": sum,
+    "len": len,
+    "sorted": sorted,
+    "enumerate": enumerate,
+    "range": range,
     # Type constructors
-    "list": list, "dict": dict, "set": set,
-    "str": str, "int": int, "float": float,
+    "list": list,
+    "dict": dict,
+    "set": set,
+    "str": str,
+    "int": int,
+    "float": float,
 }
 
 exec(code, context)

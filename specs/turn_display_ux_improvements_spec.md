@@ -242,14 +242,14 @@ Your Controlled Stars:
 **Implementation Details:**
 ```python
 # Calculate totals
-total_ru = sum(star['resources'] for star in stars_data)
-total_ships = sum(star['ships'] for star in stars_data)
+total_ru = sum(star["resources"] for star in stars_data)
+total_ships = sum(star["ships"] for star in stars_data)
 
 # Format footer row (same column widths as data rows)
-code_cell = " " * 6                              # Empty code column
-name_cell = "TOTAL" + " " * 16                   # "TOTAL" left-aligned in 21-char field
-ru_cell = f"{total_ru:>8} RU"                    # Right-align RU value in 11-char field
-ships_cell = f"{total_ships:>7}"                 # Right-align ships in 7-char field
+code_cell = " " * 6  # Empty code column
+name_cell = "TOTAL" + " " * 16  # "TOTAL" left-aligned in 21-char field
+ru_cell = f"{total_ru:>8} RU"  # Right-align RU value in 11-char field
+ships_cell = f"{total_ships:>7}"  # Right-align ships in 7-char field
 
 footer_row = f"│ {code_cell} │ {name_cell} │ {ru_cell} │ {ships_cell} │"
 ```
@@ -357,12 +357,12 @@ Your Controlled Stars:
    ```python
    # BEFORE
    top_border = "┌──────┬─────────────────────┬───────────┬───────┬─────────┐"
-   separator  = "├──────┼─────────────────────┼───────────┼───────┼─────────┤"
+   separator = "├──────┼─────────────────────┼───────────┼───────┼─────────┤"
    bottom_border = "└──────┴─────────────────────┴───────────┴───────┴─────────┘"
 
    # AFTER
    top_border = "┌──────┬─────────────────────┬───────────┬───────┐"
-   separator  = "├──────┼─────────────────────┼───────────┼───────┤"
+   separator = "├──────┼─────────────────────┼───────────┼───────┤"
    bottom_border = "└──────┴─────────────────────┴───────────┴───────┘"
    ```
 
@@ -522,10 +522,11 @@ Your Controlled Stars:
 # Star name: "Zeta Reticuli Prime" (20 chars) - fits perfectly
 # Star name: "Omicron Persei VIII Station" (28 chars) - needs truncation
 
+
 def format_star_name(name: str, width: int = 21) -> str:
     """Format star name with truncation if needed."""
     if len(name) > width:
-        return name[:width-3] + "..."  # "Omicron Persei VI..."
+        return name[: width - 3] + "..."  # "Omicron Persei VI..."
     return name.ljust(width)
 ```
 
@@ -881,10 +882,10 @@ def format_controlled_stars_table(stars_data: list[dict]) -> str:
 
 ```python
 # Column widths (include padding)
-COL_CODE_WIDTH = 6      # "A 🏠 " or "D    "
-COL_NAME_WIDTH = 21     # "Altair             "
-COL_RU_WIDTH = 11       # "     4 RU"
-COL_SHIPS_WIDTH = 7     # "    25"
+COL_CODE_WIDTH = 6  # "A 🏠 " or "D    "
+COL_NAME_WIDTH = 21  # "Altair             "
+COL_RU_WIDTH = 11  # "     4 RU"
+COL_SHIPS_WIDTH = 7  # "    25"
 
 # Box-drawing characters
 CORNER_TL = "┌"
@@ -914,7 +915,7 @@ def format_controlled_stars_table(stars_data: list[dict]) -> str:
     output.append(top_border)
 
     # Header row
-    header = f"{VBAR} {'Code':<{COL_CODE_WIDTH-1}} {VBAR} {'Star Name':<{COL_NAME_WIDTH-1}} {VBAR} {'Resources':>{COL_RU_WIDTH-1}} {VBAR} {'Ships':>{COL_SHIPS_WIDTH-1}} {VBAR}"
+    header = f"{VBAR} {'Code':<{COL_CODE_WIDTH - 1}} {VBAR} {'Star Name':<{COL_NAME_WIDTH - 1}} {VBAR} {'Resources':>{COL_RU_WIDTH - 1}} {VBAR} {'Ships':>{COL_SHIPS_WIDTH - 1}} {VBAR}"
     output.append(header)
 
     # Header separator
@@ -926,21 +927,21 @@ def format_controlled_stars_table(stars_data: list[dict]) -> str:
     total_ships = 0
 
     for star in stars_data:
-        code = star['code']
-        if star['is_home']:
+        code = star["code"]
+        if star["is_home"]:
             code += " 🏠"
         code = code.ljust(COL_CODE_WIDTH - 1)
 
-        name = star['name'][:COL_NAME_WIDTH - 1].ljust(COL_NAME_WIDTH - 1)
+        name = star["name"][: COL_NAME_WIDTH - 1].ljust(COL_NAME_WIDTH - 1)
 
         resources = f"{star['resources']} RU".rjust(COL_RU_WIDTH - 1)
-        ships = str(star['ships']).rjust(COL_SHIPS_WIDTH - 1)
+        ships = str(star["ships"]).rjust(COL_SHIPS_WIDTH - 1)
 
         row = f"{VBAR} {code} {VBAR} {name} {VBAR} {resources} {VBAR} {ships} {VBAR}"
         output.append(row)
 
-        total_ru += star['resources']
-        total_ships += star['ships']
+        total_ru += star["resources"]
+        total_ships += star["ships"]
 
     # Footer separator
     footer_sep = f"{JUNCTION_L}{HBAR * COL_CODE_WIDTH}{JUNCTION_C}{HBAR * COL_NAME_WIDTH}{JUNCTION_C}{HBAR * COL_RU_WIDTH}{JUNCTION_C}{HBAR * COL_SHIPS_WIDTH}{JUNCTION_R}"

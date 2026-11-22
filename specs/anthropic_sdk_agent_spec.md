@@ -97,13 +97,14 @@ New module `src/agent/plan.py`.
 
 ```python
 class Intent(BaseModel):
-    action: str                     # e.g. "defend H", "stage at F for strike on C"
-    expires_turn: int               # absolute turn after which intent is void
+    action: str  # e.g. "defend H", "stage at F for strike on C"
+    expires_turn: int  # absolute turn after which intent is void
     reason: str
 
+
 class Plan(BaseModel):
-    strategy: str                   # one-paragraph current strategy
-    threats_acknowledged: list[str] # e.g. "enemy fleet ~25 -> H arriving T18"
+    strategy: str  # one-paragraph current strategy
+    threats_acknowledged: list[str]  # e.g. "enemy fleet ~25 -> H arriving T18"
     intents: list[Intent]
     updated_turn: int
 ```
@@ -138,6 +139,7 @@ class OrderOut(BaseModel):
     to_star: str
     ships: int
     rationale: str
+
 
 class TurnDecision(BaseModel):
     orders: list[OrderOut]

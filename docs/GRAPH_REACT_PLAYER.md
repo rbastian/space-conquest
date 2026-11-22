@@ -162,7 +162,9 @@ def route_after_victory_check(state: DecisionState) -> Literal["threat_assessmen
 ### After Victory Opportunity
 
 ```python
-def should_continue_to_expansion(state: DecisionState) -> Literal["expansion_planning", "validation"]:
+def should_continue_to_expansion(
+    state: DecisionState,
+) -> Literal["expansion_planning", "validation"]:
     # Skip expansion if home defense inadequate
     if not state.get("home_defense_adequate", True):
         return "validation"
@@ -202,9 +204,7 @@ from src.agent.llm_factory import LLMFactory
 
 # Create LLM
 llm = LLMFactory.create_llm_for_agent(
-    provider="bedrock",
-    model="claude-3-5-sonnet-20241022",
-    region="us-east-1"
+    provider="bedrock", model="claude-3-5-sonnet-20241022", region="us-east-1"
 )
 
 # Create tools
@@ -215,12 +215,7 @@ system_prompt = get_system_prompt(verbose=False)
 
 # Create player
 player = GraphReactPlayer(
-    llm=llm,
-    game=game,
-    player_id="p2",
-    tools=tools,
-    system_prompt=system_prompt,
-    verbose=False
+    llm=llm, game=game, player_id="p2", tools=tools, system_prompt=system_prompt, verbose=False
 )
 
 # Get orders for a turn
